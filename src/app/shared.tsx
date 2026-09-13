@@ -76,16 +76,7 @@ export const CHANNELS = [
   { label: "Canary", tag: "canary",  color: "#ef4444", version: "4.9.0-canary.11" },
 ];
 
-export const MOCK_DEVICES: Device[] = [
-  { id: "d1", name: "EXEC-LAPTOP-01", os: "windows", ip: "192.168.1.42", user: "j.morgan", status: "online", cpu: 34, ram: 61, battery: 87, latency: 6, uptime: "14d 3h", location: "New York, US", lastSeen: "Now" },
-  { id: "d2", name: "MacBook-Pro-M3", os: "macos", ip: "192.168.1.55", user: "s.chen", status: "online", cpu: 22, ram: 48, battery: 94, latency: 4, uptime: "6d 11h", location: "Singapore", lastSeen: "Now" },
-  { id: "d3", name: "KIOSK-UBUNTU-07", os: "linux", ip: "10.0.0.7", user: "root", status: "online", cpu: 78, ram: 82, latency: 9, uptime: "41d 2h", location: "Frankfurt, DE", lastSeen: "Now" },
-  { id: "d4", name: "Galaxy-S24-Ultra", os: "android", ip: "192.168.1.88", user: "r.okafor", status: "warning", cpu: 91, ram: 74, battery: 23, latency: 14, uptime: "2d 7h", location: "Lagos, NG", lastSeen: "2m ago" },
-  { id: "d5", name: "iPhone-15-Pro", os: "ios", ip: "192.168.2.11", user: "a.patel", status: "online", cpu: 18, ram: 55, battery: 72, latency: 5, uptime: "3d 19h", location: "Mumbai, IN", lastSeen: "Now" },
-  { id: "d6", name: "Mate60-Pro", os: "harmony", ip: "10.0.1.4", user: "l.wei", status: "online", cpu: 29, ram: 44, battery: 61, latency: 7, uptime: "9d 4h", location: "Shanghai, CN", lastSeen: "Now" },
-  { id: "d7", name: "WORKSTATION-WIN11", os: "windows", ip: "10.0.0.22", user: "t.brooks", status: "offline", cpu: 0, ram: 0, latency: 0, uptime: "—", location: "London, UK", lastSeen: "3h ago" },
-  { id: "d8", name: "DEVBOX-ARCH", os: "linux", ip: "10.0.0.31", user: "k.ivanov", status: "online", cpu: 55, ram: 67, latency: 11, uptime: "88d 6h", location: "Moscow, RU", lastSeen: "Now" },
-];
+export const MOCK_DEVICES: Device[] = [];
 
 export const MOCK_DEPLOY_JOBS: DeployJob[] = [
   { id:"dj1", target:"EXEC-LAPTOP-01",   type:"agent-update",  status:"pending-approval", version:"4.7.3", initiator:"ai-auto",  progress:0,   risk:"medium",   checksum:"a3f9c1d2", ts:"14:35:00", log:["Package validated","SHA-256 verified","Awaiting approval"] },
