@@ -2128,7 +2128,7 @@ function DownloadPage({ setPage }: { setPage: (p: Page) => void }) {
 // ─── Root App ────────────────────────────────────────────────────────────────
 export default function App() {
   const [authed, setAuthed] = useState<boolean>(() => sessionStorage.getItem("authed") === "1");
-  const [page, setPage] = useState<Page>(() => sessionStorage.getItem("authed") === "1" ? "dashboard" : "pricing");
+  const [page, setPage] = useState<Page>(() => sessionStorage.getItem("authed") === "1" ? "dashboard" : "login");
   const [controlDevice, setControlDevice] = useState<DashDevice | null>(null);
 
   const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes inactivity
@@ -2139,7 +2139,7 @@ export default function App() {
     sessionStorage.removeItem("admin_token");
     setAuthed(false);
     setControlDevice(null);
-    setPage("pricing");
+    setPage("login");
   };
 
   const resetInactivityTimer = () => {
