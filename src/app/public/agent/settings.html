@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>bixtx.com Link - Settings</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+      color: #ffffff;
+      padding: 30px;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      background: linear-gradient(135deg, #00ffff 0%, #0099ff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .section {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 25px;
+      margin-bottom: 20px;
+    }
+
+    .section h2 {
+      font-size: 18px;
+      margin-bottom: 20px;
+      color: #00ffff;
+    }
+
+    .setting-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .setting-item:last-child {
+      border-bottom: none;
+    }
+
+    .setting-label {
+      flex: 1;
+    }
+
+    .setting-label h3 {
+      font-size: 16px;
+      margin-bottom: 5px;
+      color: #ffffff;
+    }
+
+    .setting-label p {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .toggle {
+      position: relative;
+      width: 52px;
+      height: 28px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .toggle.active {
+      background: linear-gradient(135deg, #00ffff 0%, #0099ff 100%);
+    }
+
+    .toggle-slider {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 22px;
+      height: 22px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.3s;
+    }
+
+    .toggle.active .toggle-slider {
+      transform: translateX(24px);
+    }
+
+    .input-group {
+      margin-bottom: 15px;
+    }
+
+    .input-group label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 8px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .input-group input,
+    .input-group select {
+      width: 100%;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: #ffffff;
+      font-size: 14px;
+    }
+
+    .input-group input:focus,
+    .input-group select:focus {
+      outline: none;
+      border-color: #00ffff;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-right: 10px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #00ffff 0%, #0099ff 100%);
+      color: #0a0e27;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(0, 255, 255, 0.4);
+    }
+
+    .btn-danger {
+      background: rgba(255, 50, 50, 0.2);
+      color: #ff5555;
+      border: 1px solid rgba(255, 50, 50, 0.4);
+    }
+
+    .btn-danger:hover {
+      background: rgba(255, 50, 50, 0.3);
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Settings</h1>
+    </div>
+
+    <div class="section">
+      <h2>Permissions</h2>
+      
+      <div class="setting-item">
+        <div class="setting-label">
+          <h3>Remote Control</h3>
+          <p>Allow remote keyboard and mouse control</p>
+        </div>
+        <div class="toggle active" onclick="toggleSetting(this)">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <h3>Screen Capture</h3>
+          <p>Allow screen recording and streaming</p>
+        </div>
+        <div class="toggle active" onclick="toggleSetting(this)">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <h3>Camera Access</h3>
+          <p>Allow webcam access</p>
+        </div>
+        <div class="toggle active" onclick="toggleSetting(this)">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <h3>Microphone Access</h3>
+          <p>Allow microphone access</p>
+        </div>
+        <div class="toggle active" onclick="toggleSetting(this)">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <h3>File Access</h3>
+          <p>Allow file browsing and transfer</p>
+        </div>
+        <div class="toggle active" onclick="toggleSetting(this)">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>General</h2>
+      
+      <div class="setting-item">
+        <div class="setting-label">
+          <h3>Auto Start</h3>
+          <p>Launch on system startup</p>
+        </div>
+        <div class="toggle active" onclick="toggleSetting(this)">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <h3>Notifications</h3>
+          <p>Show system notifications</p>
+        </div>
+        <div class="toggle active" onclick="toggleSetting(this)">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Advanced</h2>
+      
+      <div class="input-group">
+        <label>Server URL</label>
+        <input type="text" value="wss://api.bixtx.com/ws" id="serverUrl">
+      </div>
+
+      <div class="input-group">
+        <label>Logging Level</label>
+        <select id="logLevel">
+          <option value="error">Error</option>
+          <option value="warn">Warning</option>
+          <option value="info" selected>Info</option>
+          <option value="debug">Debug</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Danger Zone</h2>
+      <button class="btn btn-danger" onclick="unregisterDevice()">Unregister Device</button>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+
+  <script>
+    function toggleSetting(element) {
+      element.classList.toggle('active');
+    }
+
+    function saveSettings() {
+      alert('Settings saved successfully!');
+      window.close();
+    }
+
+    function unregisterDevice() {
+      if (confirm('Are you sure you want to unregister this device? This will disconnect it from your bixtx.com account.')) {
+        alert('Device unregistered. Please close this window.');
+      }
+    }
+  </script>
+</body>
+</html>

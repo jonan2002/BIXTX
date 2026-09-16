@@ -1,0 +1,45 @@
+{
+  "name": "bixtx-link-software",
+  "version": "1.0.0",
+  "description": "bixtx.com Link Software - Lightweight monitoring agent for remote device management",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "electron-forge start",
+    "build": "tsc && electron-forge make",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish"
+  },
+  "keywords": ["bixtx", "monitoring", "remote-access", "device-management"],
+  "author": "bixtx.com",
+  "license": "MIT",
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.0",
+    "ws": "^8.14.2",
+    "wrtc": "^0.4.7",
+    "node-machine-id": "^1.1.12",
+    "systeminformation": "^5.21.20",
+    "screenshot-desktop": "^1.12.7",
+    "active-win": "^7.8.2",
+    "robotjs": "^0.6.0",
+    "node-webcam": "^0.8.1",
+    "node-record-lpcm16": "^1.0.1",
+    "chokidar": "^3.5.3",
+    "axios": "^1.6.2",
+    "crypto-js": "^4.2.0",
+    "nanoid": "^3.3.7",
+    "auto-launch": "^5.0.6",
+    "node-notifier": "^10.0.1"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.2.0",
+    "@electron-forge/maker-deb": "^7.2.0",
+    "@electron-forge/maker-dmg": "^7.2.0",
+    "@electron-forge/maker-squirrel": "^7.2.0",
+    "@electron-forge/maker-zip": "^7.2.0",
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.10",
+    "electron": "^28.0.0",
+    "typescript": "^5.3.2"
+  }
+}
