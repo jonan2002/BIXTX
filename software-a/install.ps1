@@ -1,5 +1,5 @@
 # ╔══════════════════════════════════════════════════════════════════╗
-# ║  Lawrix AI Link Agent — Windows Silent Installer (PowerShell)    ║
+# ║  bixtx Link Agent — Windows Silent Installer (PowerShell)    ║
 # ║  Run as: powershell -ExecutionPolicy Bypass -File install.ps1 \  ║
 # ║    -Key YOUR_ENROLL_KEY -Silent                                   ║
 # ╚══════════════════════════════════════════════════════════════════╝
@@ -7,32 +7,32 @@
 param(
     [Parameter(Mandatory=$true)]
     [string]$Key,
-    [string]$C2Url    = "wss://api.lawrix.ai/ws",
-    [string]$AgentDir = "$env:ProgramData\LawrixAgent",
+    [string]$C2Url  = "ws://localhost:3001",
+    [string]$AgentDir = "$env:ProgramData\BixtxAgent",
     [switch]$Silent
 )
 
 $ErrorActionPreference = "Stop"
 $AgentVersion  = "4.7.2"
-$ServiceName   = "LawrixAgent"
+$ServiceName   = "BixtxAgent"
 $DisplayName   = "System Performance Monitor"
-$AuditLog      = "C:\ProgramData\lawrix-installer.log"
+$AuditLog      = "C:\ProgramData\bixtx-installer.log"
 
 $_RollbackDirs  = [System.Collections.Generic.List[string]]::new()
 $_Installed     = $false
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-function Log($msg) { if (-not $Silent) { Write-Host "[LRX] $msg" } }
+function Log($msg) { if (-not $Silent) { Write-Host "[BTX] $msg" } }
 
 function Audit($msg) {
-    $line = "$(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ') [LAWRIX] $msg"
+    $line = "$(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ') [BIXTX] $msg"
     try { Add-Content -Path $AuditLog -Value $line -Encoding utf8 -ErrorAction SilentlyContinue } catch {}
 }
 
 function Die($msg) {
     Audit "FATAL: $msg"
-    Write-Error "[LRX] ERROR: $msg"
+    Write-Error "[BTX] ERROR: $msg"
     exit 1
 }
 
@@ -66,7 +66,7 @@ function Rollback {
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
-Audit "=== Lawrix Agent v$AgentVersion install started | user=$env:USERNAME host=$env:COMPUTERNAME ==="
+Audit "=== bixtx Agent v$AgentVersion install started | user=$env:USERNAME host=$env:COMPUTERNAME ==="
 
 try {
 
@@ -135,8 +135,8 @@ try {
     # Use a temp file + atomic move so the file is never partially written
     $envTmp  = [System.IO.Path]::GetTempFileName()
     @"
-LAWRIX_SERVER_URL=$C2Url
-LAWRIX_ENROLL_KEY=$Key
+BIXTX_SERVER_URL=$C2Url
+BIXTX_ENROLL_KEY=$Key
 NODE_ENV=production
 SILENT_MODE=true
 LOG_LEVEL=warn
@@ -230,7 +230,7 @@ MAX_MODULE_FAILURES=3
         Log "Health check passed — agent is running"
     } else {
         Audit "Health check FAILED — agent may not have started"
-        Write-Warning "[LRX] Health check failed — agent may not have started. Check $AgentDir\logs\"
+        Write-Warning "[BTX] Health check failed — agent may not have started. Check $AgentDir\logs\"
     }
 
     # ── Audit trail — SHA-256 hashes ──────────────────────────────────────────
@@ -242,11 +242,11 @@ MAX_MODULE_FAILURES=3
     Audit "=== Installation COMPLETE v$AgentVersion ==="
 
     $_Installed = $true
-    Log "Lawrix Agent v$AgentVersion installed. Device appears in dashboard within 30-60s."
+    Log "bixtx Agent v$AgentVersion installed. Device appears in dashboard within 30-60s."
 
 } catch {
     Audit "EXCEPTION: $_"
-    Write-Error "[LRX] Installation failed: $_"
+    Write-Error "[BTX] Installation failed: $_"
     if (-not $_Installed) { Rollback }
     exit 1
 }

