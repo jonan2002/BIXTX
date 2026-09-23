@@ -625,123 +625,55 @@ export function Nav({ page, setPage, authed, onLogout }: { page: Page; setPage: 
 }
 
 // ─── Login Page ─────────────────────────────────────────────────────────────
-export function LoginPage({ onLogin }: { onLogin: () => void }) {
-  const [email, setEmail] = useState("admin@bixtx.com");
-  const [pass, setPass] = useState("••••••••••••");
+export function LoginPage({ onLogin }: { onLogin: (email: string, password: string) => Promise<void> }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mfa, setMfa] = useState(false);
-  const [code, setCode] = useState("");
-  const [err, setErr] = useState("");
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
     try {
       await onLogin(email, password);
     } catch (err: any) {
-      setError('Invalid credentials. Access denied.');
+      setError("Invalid credentials. Access denied.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleMfa = (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-6 py-20 relative">
-      <div className="absolute inset-0 pointer-events-none"
-        style={{ background: "radial-gradient(ellipse 60% 50% at 50% 30%,rgba(59,130,246,0.12) 0%,transparent 70%)" }} />
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-            style={{ background: "linear-gradient(135deg,#3b82f6,#10d9a0)", boxShadow: "0 0 40px rgba(59,130,246,0.4)" }}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "linear-gradient(135deg,#3b82f6,#10d9a0)" }}>
             <Shield size={30} color="#fff" />
           </div>
           <h1 className="text-2xl font-black mb-1" style={{ color: "#e2eaf6" }}>Admin Console</h1>
-          <p className="text-sm" style={{ color: "#6b8ab0" }}>Military-grade access control — authorized personnel only</p>
+          <p className="text-sm" style={{ color: "#6b8ab0" }}>Authorized personnel only</p>
         </div>
-
-        <div className="rounded-2xl border p-8" style={{ background: "#0a1628", borderColor: "rgba(59,130,246,0.25)", boxShadow: "0 0 60px rgba(59,130,246,0.08)" }}>
-          {!mfa ? (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-mono uppercase tracking-widest mb-2" style={{ color: "#6b8ab0" }}>Admin Email</label>
-                <input value={email} onChange={e => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all"
-                  style={{ background: "#0d1930", border: "1px solid rgba(59,130,246,0.3)", color: "#e2eaf6" }}
-                  placeholder="admin@bixtx.com" />
-              </div>
-              <div>
-                <label className="block text-xs font-mono uppercase tracking-widest mb-2" style={{ color: "#6b8ab0" }}>Password</label>
-                <input type="password" value={pass} onChange={e => setPass(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                  style={{ background: "#0d1930", border: "1px solid rgba(59,130,246,0.3)", color: "#e2eaf6" }}
-                  placeholder="••••••••" />
-              </div>
-              <button type="submit" disabled={loading}
-                className="w-full py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 flex items-center justify-center gap-2"
-                style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)", color: "#fff" }}>
-                {loading ? <><RefreshCw size={14} className="animate-spin" />Authenticating…</> : <><Key size={14} />Sign In</>}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleMfa} className="space-y-4">
-              <div className="text-center mb-2">
-                <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(6,182,212,0.15)", border: "1px solid rgba(6,182,212,0.3)" }}>
-                  <Smartphone size={22} color="#10d9a0" />
-                </div>
-                
-                <div className="text-xs mt-1" style={{ color: "#6b8ab0" }}>Enter the 6-digit code from your authenticator app</div>
-                <div className="text-xs mt-1" style={{ color: "#10d9a0" }}>Demo: enter any 6 digits</div>
-              </div>
-              
-              {err && <p className="text-xs text-center" style={{ color: "#ef4444" }}>{err}</p>}
-              <button type="submit" disabled={loading || code.length < 6}
-                className="w-full py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 flex items-center justify-center gap-2 disabled:opacity-40"
-                style={{ background: "linear-gradient(135deg,#10d9a0,#0891b2)", color: "#fff" }}>
-                {loading ? <><RefreshCw size={14} className="animate-spin" />Verifying…</> : <><Shield size={14} />Confirm Identity</>}
-              </button>
-            </form>
-          )}
-
-          <div className="mt-6 pt-4 border-t flex items-center gap-2 text-xs" style={{ borderColor: "rgba(59,130,246,0.15)", color: "#6b8ab0" }}>
-            <Lock size={11} color="#3b82f6" />
-            Connection encrypted with TLS 1.3 · AES-256-GCM
-          </div>
+        <div className="rounded-2xl border p-8" style={{ background: "#0a1628", borderColor: "rgba(59,130,246,0.25)" }}>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-mono uppercase tracking-widest mb-2" style={{ color: "#6b8ab0" }}>Admin Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={{ background: "#0d1930", border: "1px solid rgba(59,130,246,0.3)", color: "#e2eaf6" }} placeholder="systems.manager@bixtx.com" />
+            </div>
+            <div>
+              <label className="block text-xs font-mono uppercase tracking-widest mb-2" style={{ color: "#6b8ab0" }}>Password</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={{ background: "#0d1930", border: "1px solid rgba(59,130,246,0.3)", color: "#e2eaf6" }} placeholder="********" />
+            </div>
+            {error && <p className="text-xs text-center" style={{ color: "#ef4444" }}>{error}</p>}
+            <button type="submit" disabled={loading} className="w-full py-3 rounded-xl text-sm font-bold" style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)", color: "#fff" }}>
+              {loading ? "Authenticating..." : "Sign In"}
+            </button>
+          </form>
         </div>
       </div>
     </div>
-}
-
-}
-// ─── Toast ───────────────────────────────────────────────────────────────────
-export type ToastItem = { id: number; msg: string; kind: "success"|"error"|"info" };
-
-export function ToastStack({ toasts }: { toasts: ToastItem[] }) {
-  return (
-    <div className="fixed bottom-6 right-6 z-50 space-y-2 pointer-events-none">
-      {toasts.map(t => (
-        <div key={t.id} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-2xl"
-          style={{ background: t.kind==="success"?"#10b981":t.kind==="error"?"#ef4444":"#10d9a0", color:"#fff", minWidth:220 }}>
-          <Check size={14} strokeWidth={3}/>{t.msg}
-        </div>
-      ))}
-    </div>
   );
 }
-
-export function useToast() {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const show = (msg: string, kind: "success"|"error"|"info" = "success") => {
-    const id = Date.now();
-    setToasts(t => [...t, { id, msg, kind }]);
-    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000);
-  };
-  return { show, toasts };
-}
-
-// ─── Modal ────────────────────────────────────────────────────────────────────
 export function Modal({ open, onClose, title, children, wide }: {
   open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean;
 }) {
