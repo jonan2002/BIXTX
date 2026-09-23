@@ -649,7 +649,7 @@ function Nav({ page, setPage, authed, onLogout }: { page: Page; setPage: (p: Pag
 }
 
 // ─── Login Page ─────────────────────────────────────────────────────────────
-function LoginPage({ onLogin }: { onLogin: () => void }) {
+function LoginPage({ onLogin }: { onLogin: (email: string, password: string) => void }) {
   const [email, setEmail] = useState("admin@bixtx.com");
   const [pass, setPass] = useState("••••••••••••");
   const [loading, setLoading] = useState(false);
@@ -667,7 +667,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
   const handleMfa = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => { setLoading(false); if (code === "000000" || code.length === 6) { onLogin(); } else { setErr("Invalid code. Try 000000 for demo."); setLoading(false); } }, 900);
+    setTimeout(() => { setLoading(false); if (code === "000000" || code.length === 6) { onLogin(email, pass); } else { setErr("Invalid code. Try 000000 for demo."); setLoading(false); } }, 900);
   };
 
   return (
@@ -696,7 +696,8 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
               </div>
               <div>
                 <label className="block text-xs font-mono uppercase tracking-widest mb-2" style={{ color: "#6b8ab0" }}>Password</label>
-                <input type="password" value={pass} onChange={e => setPass(e.target.value)}
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl text-sm outline-none mb-4" style={{ background: "#0d1930", border: "1px solid rgba(59,130,246,0.3)", color: "#e2eaf6" }} placeholder="Email" />
+            <input type="password" value={pass} onChange={e => setPass(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                   style={{ background: "#0d1930", border: "1px solid rgba(59,130,246,0.3)", color: "#e2eaf6" }}
                   placeholder="••••••••" />
