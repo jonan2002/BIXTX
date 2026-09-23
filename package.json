@@ -49,16 +49,18 @@
     "input-otp": "latest",
     "lucide-react": "latest",
     "next-themes": "latest",
+    "qrcode": "latest",
     "react": "18.3.1",
-    "react-dom": "18.3.1",
     "react-day-picker": "latest",
+    "react-dom": "18.3.1",
     "react-hook-form": "latest",
     "react-resizable-panels": "latest",
+    "react-router-dom": "latest",
     "recharts": "latest",
     "sonner": "latest",
     "tailwind-merge": "latest",
-    "vaul": "latest",
-    "qrcode": "latest"
+    "tw-animate-css": "latest",
+    "vaul": "latest"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
