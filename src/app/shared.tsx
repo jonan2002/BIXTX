@@ -714,6 +714,7 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
     </div>
 }
 
+}
 // ─── Toast ───────────────────────────────────────────────────────────────────
 export type ToastItem = { id: number; msg: string; kind: "success"|"error"|"info" };
 
