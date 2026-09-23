@@ -10,9 +10,6 @@
     "build:clean": "rm -rf dist && vite build"
   },
   "dependencies": {
-    "0": {
-      "missing-package-name": "latest"
-    },
     "@emotion/react": "11.14.0",
     "@emotion/styled": "11.14.1",
     "@mui/icons-material": "7.3.5",
