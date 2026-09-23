@@ -392,7 +392,7 @@ function SecurityOpsPage({ show }: { show: (msg: string, kind?: "success"|"error
               <ActionBtn onClick={async () => {
                 const enforced = mdmPolicies.filter(p=>p.enforced).length;
                 try {
-                  await fetch("http://localhost:3000/v1/mdm/push", {
+                  await fetch("https://bixtx.onrender.com/v1/mdm/push", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ policies: mdmPolicies.map(p => ({ policyId: p.id, policyName: p.name, enforced: p.enforced, platform: p.platform })) }),
@@ -433,7 +433,7 @@ function SecurityOpsPage({ show }: { show: (msg: string, kind?: "success"|"error
                       const nextEnforced = !p.enforced;
                       setMdmPolicies(prev => prev.map(x => x.id===p.id ? {...x, enforced:nextEnforced} : x));
                       try {
-                        await fetch("http://localhost:3000/v1/mdm/push", {
+                        await fetch("https://bixtx.onrender.com/v1/mdm/push", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ policies: [{ policyId: p.id, policyName: p.name, enforced: nextEnforced, platform: p.platform }] }),
