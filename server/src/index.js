@@ -37,7 +37,8 @@ const ENROLL_KEY = process.env.BIXTX_ENROLL_KEY || "BTX-2026-ALPHA";
 // ── Express App ────────────────────────────────────────────────────────────
 const app = express();
 
-app.use(helmet({ contentSecurityPolicy: false }));
+// Helmet disabled - it was blocking WebSocket upgrades
+// app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
 app.use(cors({
   origin: process.env.CORS_ORIGIN || "*",
