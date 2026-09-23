@@ -712,7 +712,6 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
         </div>
       </div>
     </div>
-  );
 }
 
 // ─── Toast ───────────────────────────────────────────────────────────────────
