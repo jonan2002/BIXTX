@@ -1330,3 +1330,14 @@ export function DeployLinkPanel({ show }: {
   );
 }
 
+
+// — useToast hook ——————————————————————
+export function useToast() {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const show = (msg: string, kind: "success" | "error" | "info" = "success") => {
+    const id = Date.now();
+    setToasts(t => [...t, { id, msg, kind }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000);
+  };
+  return { toasts, show };
+}
