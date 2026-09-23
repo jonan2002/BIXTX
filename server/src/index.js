@@ -70,7 +70,7 @@ app.use((err, req, res, _next) => {
 const httpServer = http.createServer(app);
 
 // Admin WebSocket (on the same HTTP port, path /admin-ws)
-const adminWss = new WebSocket.Server({ server: httpServer, path: "/admin-ws" });
+const adminWss = new WebSocket.Server({ noServer: true });
 adminWss.on("connection", (ws, req) => {
   // Validate JWT from query string
   const url = new URL(req.url, `http://localhost:${HTTP_PORT}`);
@@ -88,11 +88,26 @@ adminWss.on("connection", (ws, req) => {
 });
 
 // ── Agent C2 WebSocket Server (separate port) ───────────────────────────────
-const agentWss = new WebSocket.Server({ server: httpServer, path: "/agent" });
+const agentWss = new WebSocket.Server({ noServer: true });
 wsHandler.setupAgentWS(agentWss, ENROLL_KEY);
 
 // ── Start ────────────────────────────────────────────────────────────────────
 store.init();
+
+
+// ——————————————————————————————————————————————
+// Manual WebSocket upgrade routing (fixes conflict between two WSS on same server)
+// ——————————————————————————————————————————————
+httpServer.on("upgrade", (req, socket, head) => {
+  const pathname = new URL(req.url, "http://localhost").pathname;
+  if (pathname === "/admin-ws") {
+    adminWss.handleUpgrade(req, socket, head, (ws) => adminWss.emit("connection", ws, req));
+  } else if (pathname === "/agent") {
+    agentWss.handleUpgrade(req, socket, head, (ws) => agentWss.emit("connection", ws, req));
+  } else {
+    socket.destroy();
+  }
+});
 
 httpServer.listen(HTTP_PORT, () => {
   logger.info(`╔════════════════════════════════════════╗`);
