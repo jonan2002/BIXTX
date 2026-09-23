@@ -1,7 +1,7 @@
 {
   "name": "@figma/my-make-file",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -49,6 +49,8 @@
     "input-otp": "latest",
     "lucide-react": "latest",
     "next-themes": "latest",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "react-day-picker": "latest",
     "react-hook-form": "latest",
     "react-resizable-panels": "latest",
@@ -59,12 +61,13 @@
     "qrcode": "latest"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
     "tailwindcss": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "5.4.0"
   }
 }
