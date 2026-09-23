@@ -649,7 +649,6 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
   const handleMfa = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-  return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-6 py-20 relative">
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: "radial-gradient(ellipse 60% 50% at 50% 30%,rgba(59,130,246,0.12) 0%,transparent 70%)" }} />
