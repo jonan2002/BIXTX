@@ -2160,11 +2160,29 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
 
-  const handleLogin = () => {
-    sessionStorage.setItem("authed", "1");
-    setAuthed(true);
-    setPage("dashboard");
-    resetInactivityTimer();
+  const handleLogin = async (email: string, password: string) => {
+    try {
+      const response = await fetch("https://bixtx.onrender.com/v1/auth/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      
+      const data = await response.json();
+      
+      if (data && data.token) {
+        sessionStorage.setItem("token", data.token);
+        sessionStorage.setItem("authed", "1");
+        setAuthed(true);
+        setPage("dashboard");
+        resetInactivityTimer();
+      } else {
+        throw new Error("Invalid credentials");
+      }
+    } catch (error) {
+      console.error("Login failed:", error);
+      throw error;
+    }
   };
   const handleLogout = () => {
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
