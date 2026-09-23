@@ -633,17 +633,23 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
   const [code, setCode] = useState("");
   const [err, setErr] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErr("");
+    setError('');
     setLoading(true);
-    setTimeout(() => { setLoading(false); setMfa(true); }, 1200);
+    try {
+      await onLogin(email, password);
+    } catch (err: any) {
+      setError('Invalid credentials. Access denied.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleMfa = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => { setLoading(false); if (code === "000000" || code.length === 6) { onLogin(); } else { setErr("Invalid code. Try 000000 for demo."); setLoading(false); } }, 900);
+    ||
   };
 
   return (
@@ -689,14 +695,11 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
                 <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(6,182,212,0.15)", border: "1px solid rgba(6,182,212,0.3)" }}>
                   <Smartphone size={22} color="#10d9a0" />
                 </div>
-                <div className="font-bold" style={{ color: "#e2eaf6" }}>Two-Factor Verification</div>
+                
                 <div className="text-xs mt-1" style={{ color: "#6b8ab0" }}>Enter the 6-digit code from your authenticator app</div>
                 <div className="text-xs mt-1" style={{ color: "#10d9a0" }}>Demo: enter any 6 digits</div>
               </div>
-              <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                className="w-full px-4 py-4 rounded-xl text-center text-3xl font-mono outline-none tracking-[0.5em]"
-                style={{ background: "#0d1930", border: "1px solid rgba(6,182,212,0.4)", color: "#10d9a0", letterSpacing: "0.4em" }}
-                placeholder="000000" maxLength={6} />
+              
               {err && <p className="text-xs text-center" style={{ color: "#ef4444" }}>{err}</p>}
               <button type="submit" disabled={loading || code.length < 6}
                 className="w-full py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 flex items-center justify-center gap-2 disabled:opacity-40"
