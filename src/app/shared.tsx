@@ -1341,3 +1341,22 @@ export function useToast() {
   };
   return { toasts, show };
 }
+
+// — ToastStack component ——————————————————
+export function ToastStack({ toasts }: { toasts: ToastItem[] }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-50 space-y-2 pointer-events-none">
+      {toasts.map(t => (
+        <div key={t.id} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-2xl"
+          style={{
+            background: t.kind==="success"?"#10b981":t.kind==="error"?"#ef4444":"#10d9a0",
+            color: "#fff",
+            minWidth: 220
+          }}>
+          <Check size={14} strokeWidth={3} />
+          {t.msg}
+        </div>
+      ))}
+    </div>
+  );
+}
