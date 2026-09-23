@@ -87,7 +87,7 @@ adminWss.on("connection", (ws, req) => {
 });
 
 // ── Agent C2 WebSocket Server (separate port) ───────────────────────────────
-const agentWss = new WebSocket.Server({ port: WS_PORT });
+const agentWss = new WebSocket.Server({ server: httpServer, path: "/agent" });
 wsHandler.setupAgentWS(agentWss, ENROLL_KEY);
 
 // ── Start ────────────────────────────────────────────────────────────────────
