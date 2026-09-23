@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>bixtx.com Link - Logs</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+      color: #ffffff;
+      padding: 20px;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      background: linear-gradient(135deg, #00ffff 0%, #0099ff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      align-items: center;
+    }
+
+    .controls select {
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 13px;
+    }
+
+    .controls button {
+      padding: 8px 16px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .controls button:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .controls .btn-clear {
+      background: rgba(255, 50, 50, 0.2);
+      border-color: rgba(255, 50, 50, 0.4);
+      color: #ff5555;
+      margin-left: auto;
+    }
+
+    .log-container {
+      flex: 1;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 15px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .log-entry:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .log-timestamp {
+      color: rgba(255, 255, 255, 0.4);
+      margin-right: 10px;
+    }
+
+    .log-level {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: bold;
+      margin-right: 10px;
+      min-width: 50px;
+      text-align: center;
+    }
+
+    .log-level.debug {
+      background: rgba(150, 150, 150, 0.3);
+      color: #999;
+    }
+
+    .log-level.info {
+      background: rgba(0, 150, 255, 0.3);
+      color: #4db8ff;
+    }
+
+    .log-level.warn {
+      background: rgba(255, 165, 0, 0.3);
+      color: #ffaa00;
+    }
+
+    .log-level.error {
+      background: rgba(255, 50, 50, 0.3);
+      color: #ff5555;
+    }
+
+    .log-context {
+      color: rgba(0, 255, 255, 0.7);
+      margin-right: 10px;
+    }
+
+    .log-message {
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(0, 255, 255, 0.3);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 255, 255, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Application Logs</h1>
+    </div>
+
+    <div class="controls">
+      <select id="levelFilter" onchange="filterLogs()">
+        <option value="all">All Levels</option>
+        <option value="debug">Debug</option>
+        <option value="info">Info</option>
+        <option value="warn">Warning</option>
+        <option value="error">Error</option>
+      </select>
+
+      <select id="contextFilter" onchange="filterLogs()">
+        <option value="all">All Components</option>
+        <option value="DeviceManager">Device Manager</option>
+        <option value="ConnectionManager">Connection Manager</option>
+        <option value="SecurityManager">Security Manager</option>
+        <option value="MonitoringService">Monitoring Service</option>
+      </select>
+
+      <button onclick="refreshLogs()">Refresh</button>
+      <button class="btn-clear" onclick="clearLogs()">Clear</button>
+    </div>
+
+    <div class="log-container" id="logContainer">
+      <!-- Logs will be inserted here -->
+    </div>
+  </div>
+
+  <script>
+    // Mock log data
+    const mockLogs = [
+      { timestamp: new Date(), level: 'info', context: 'BixtxLinkApp', message: 'bixtx Link Software started successfully' },
+      { timestamp: new Date(), level: 'info', context: 'SecurityManager', message: 'SecurityManager initialized successfully' },
+      { timestamp: new Date(), level: 'info', context: 'DeviceManager', message: 'Initializing DeviceManager...' },
+      { timestamp: new Date(), level: 'info', context: 'DeviceManager', message: 'DeviceManager initialized successfully' },
+      { timestamp: new Date(), level: 'info', context: 'ConnectionManager', message: 'ConnectionManager initialized' },
+      { timestamp: new Date(), level: 'info', context: 'MonitoringService', message: 'Starting MonitoringService...' },
+      { timestamp: new Date(), level: 'info', context: 'ScreenCaptureService', message: 'ScreenCaptureService initialized' },
+      { timestamp: new Date(), level: 'info', context: 'MonitoringService', message: 'MonitoringService started successfully' },
+      { timestamp: new Date(), level: 'info', context: 'ConnectionManager', message: 'Connecting to server: wss://api.bixtx.com/ws' },
+      { timestamp: new Date(), level: 'info', context: 'ConnectionManager', message: 'WebSocket connection opened' },
+      { timestamp: new Date(), level: 'info', context: 'ConnectionManager', message: 'Authentication sent' },
+      { timestamp: new Date(), level: 'info', context: 'ConnectionManager', message: 'Connected to server successfully' },
+      { timestamp: new Date(), level: 'info', context: 'MonitoringService', message: 'Connected to server' },
+      { timestamp: new Date(), level: 'info', context: 'ConnectionManager', message: 'Authentication successful' },
+      { timestamp: new Date(), level: 'info', context: 'MonitoringService', message: 'Authenticated successfully' },
+      { timestamp: new Date(), level: 'info', context: 'MonitoringService', message: 'Device info sent' },
+      { timestamp: new Date(), level: 'info', context: 'MonitoringService', message: 'Metrics collection started' },
+      { timestamp: new Date(), level: 'debug', context: 'ConnectionManager', message: 'Message sent: system_metrics' },
+      { timestamp: new Date(), level: 'info', context: 'MonitoringService', message: 'Received command: get_device_info' },
+      { timestamp: new Date(), level: 'debug', context: 'ConnectionManager', message: 'Message sent: command_result' },
+    ];
+
+    let allLogs = [...mockLogs];
+
+    function formatTimestamp(date) {
+      return date.toISOString().replace('T', ' ').split('.')[0];
+    }
+
+    function renderLogs(logs) {
+      const container = document.getElementById('logContainer');
+      container.innerHTML = logs.map(log => `
+        <div class="log-entry">
+          <span class="log-timestamp">${formatTimestamp(log.timestamp)}</span>
+          <span class="log-level ${log.level}">${log.level.toUpperCase()}</span>
+          <span class="log-context">[${log.context}]</span>
+          <span class="log-message">${log.message}</span>
+        </div>
+      `).join('');
+
+      // Auto-scroll to bottom
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function filterLogs() {
+      const levelFilter = document.getElementById('levelFilter').value;
+      const contextFilter = document.getElementById('contextFilter').value;
+
+      let filtered = allLogs;
+
+      if (levelFilter !== 'all') {
+        filtered = filtered.filter(log => log.level === levelFilter);
+      }
+
+      if (contextFilter !== 'all') {
+        filtered = filtered.filter(log => log.context === contextFilter);
+      }
+
+      renderLogs(filtered);
+    }
+
+    function refreshLogs() {
+      // In real implementation, this would fetch new logs
+      filterLogs();
+    }
+
+    function clearLogs() {
+      if (confirm('Are you sure you want to clear all logs?')) {
+        allLogs = [];
+        renderLogs([]);
+      }
+    }
+
+    // Initial render
+    renderLogs(allLogs);
+
+    // Simulate new logs
+    setInterval(() => {
+      const contexts = ['DeviceManager', 'ConnectionManager', 'MonitoringService', 'SecurityManager'];
+      const levels = ['debug', 'info', 'info', 'info']; // More info logs
+      const messages = [
+        'System metrics updated',
+        'Heartbeat sent',
+        'Device status checked',
+        'Connection stable',
+        'Data encrypted',
+      ];
+
+      const newLog = {
+        timestamp: new Date(),
+        level: levels[Math.floor(Math.random() * levels.length)],
+        context: contexts[Math.floor(Math.random() * contexts.length)],
+        message: messages[Math.floor(Math.random() * messages.length)],
+      };
+
+      allLogs.push(newLog);
+      filterLogs();
+    }, 5000);
+  </script>
+</body>
+</html>

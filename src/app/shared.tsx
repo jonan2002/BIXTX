@@ -649,8 +649,6 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
   const handleMfa = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    ||
-  };
 
   return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-6 py-20 relative">
