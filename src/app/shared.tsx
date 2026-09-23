@@ -78,26 +78,9 @@ export const CHANNELS = [
 
 export const MOCK_DEVICES: Device[] = [];
 
-export const MOCK_DEPLOY_JOBS: DeployJob[] = [
-  { id:"dj1", target:"EXEC-LAPTOP-01",   type:"agent-update",  status:"pending-approval", version:"4.7.3", initiator:"ai-auto",  progress:0,   risk:"medium",   checksum:"a3f9c1d2", ts:"14:35:00", log:["Package validated","SHA-256 verified","Awaiting approval"] },
-  { id:"dj2", target:"KIOSK-UBUNTU-07",  type:"agent-update",  status:"running",           version:"4.7.3", initiator:"ai-auto",  progress:62,  risk:"medium",   checksum:"a3f9c1d2", ts:"14:33:00", log:["Approved 14:33:12","Downloading 4.7.3","Installing modules…"] },
-  { id:"dj3", target:"MacBook-Pro-M3",   type:"config-push",   status:"success",           version:"4.7.2", initiator:"admin",    progress:100, risk:"low",      checksum:"b1e4f7a8", ts:"14:20:00", log:["Approved","Pushed","Verified — agent healthy"] },
-  { id:"dj4", target:"Galaxy-S24-Ultra", type:"agent-install",  status:"failed",            version:"4.7.2", initiator:"ai-auto",  progress:38,  risk:"high",     checksum:"c9d2e5b3", ts:"14:18:00", log:["Approved","Partial install","Host unreachable at 38%","Auto-rollback triggered","Rollback complete"] },
-  { id:"dj5", target:"DEVBOX-ARCH",      type:"code-deploy",   status:"pending-approval",  version:"4.7.3-patch.1", initiator:"ai-auto", progress:0, risk:"critical", checksum:"d7a1f2c8", ts:"14:40:00", log:["AI self-generated patch","Module: sensors.js","Diff: +47 -12 lines","Awaiting admin approval"] },
-  { id:"dj6", target:"iPhone-15-Pro",    type:"agent-update",  status:"paused",            version:"4.7.3", initiator:"watchdog", progress:25,  risk:"medium",   checksum:"a3f9c1d2", ts:"14:28:00", log:["Watchdog initiated","Approved","Installing","Paused by admin at 25%"] },
-  { id:"dj7", target:"Mate60-Pro",       type:"agent-update",  status:"rolled-back",       version:"4.7.3", initiator:"ai-auto",  progress:0,   risk:"high",     checksum:"a3f9c1d2", rollbackVersion:"4.7.2", ts:"14:10:00", log:["Deployed","Agent crash detected","Rollback to 4.7.2","Rollback verified"] },
-];
+export const MOCK_DEPLOY_JOBS: DeployJob[] = [];
 
-export const MOCK_NET_IFACES: NetworkIface[] = [
-  { id:"ni1", name:"eth0",         type:"ethernet",  status:"connected",    ip:"192.168.1.1",  mac:"00:1A:2B:3C:4D:5E", devices:12, speed:"1 Gbps",  label:"Primary LAN" },
-  { id:"ni2", name:"wlan0",        type:"wifi",      status:"connected",    ip:"192.168.1.42", mac:"AA:BB:CC:DD:EE:FF", devices:8,  speed:"802.11ac", signal:82, ssid:"HQ-Secure-5G", label:"Office WiFi" },
-  { id:"ni3", name:"wlan1",        type:"wifi",      status:"scanning",     ip:undefined,      mac:"11:22:33:44:55:66", devices:3,  speed:"802.11ax", signal:45, ssid:"Guest-Net",    label:"Guest RF" },
-  { id:"ni4", name:"bt0",          type:"bluetooth", status:"connected",    ip:undefined,      mac:"F0:18:98:A1:B2:C3", devices:5,  speed:"BT 5.0",  label:"BT Peripherals" },
-  { id:"ni5", name:"lan-sw-1",     type:"lan",       status:"connected",    ip:"10.0.0.1",     mac:undefined,           devices:24, speed:"10G",     label:"Campus LAN" },
-  { id:"ni6", name:"wan0",         type:"wan",       status:"connected",    ip:"203.0.113.42", mac:undefined,           devices:0,  speed:"1 Gbps",  label:"Internet Uplink" },
-  { id:"ni7", name:"tun0",         type:"wan",       status:"connected",    ip:"10.8.0.1",     mac:undefined,           devices:6,  speed:"VPN",     label:"VPN Tunnel (Tor)" },
-  { id:"ni8", name:"eth1",         type:"offline",   status:"disconnected", ip:undefined,      mac:"00:1A:2B:3C:4D:5F", devices:0,  speed:"1 Gbps",  label:"Backup Link (down)" },
-];
+export const MOCK_NET_IFACES: NetworkIface[] = [];
 
 export const ALERTS = [
   { id: 1, level: "critical", msg: "Galaxy-S24-Ultra: Battery at 23% — remote power warning", time: "2m ago" },
@@ -107,34 +90,7 @@ export const ALERTS = [
   { id: 5, level: "success", msg: "WORKSTATION-WIN11 came offline — offline recording active", time: "3h ago" },
 ];
 
-export const MOCK_EMERGENCY_ALERTS: EmergencyAlert[] = [
-  {
-    alertId: "EA-001", severity: "CRITICAL", type: "BATTERY",
-    title: "Critical Battery on Galaxy-S24-Ultra",
-    detail: "Device battery at 23%. Remote power warning triggered. Immediate action required to prevent data loss.",
-    deviceId: "d4", deviceDetail: { name: "Galaxy-S24-Ultra" }, userDetail: { fullName: "R. Okafor" },
-    geopolitical: { city: "Lagos", country: "NG" },
-    emergencyContacts: [{ name: "IT Support", number: "+1-555-0199" }, { name: "R. Okafor", number: "+234-800-0000" }],
-    ts: Date.now() - 120000,
-  },
-  {
-    alertId: "EA-002", severity: "HIGH", type: "CPU",
-    title: "CPU Anomaly Detected",
-    detail: "KIOSK-UBUNTU-07 CPU sustained at 78% — potential crypto miner or unauthorized process.",
-    deviceId: "d3", deviceDetail: { name: "KIOSK-UBUNTU-07" }, userDetail: { fullName: "System" },
-    geopolitical: { city: "Frankfurt", country: "DE" },
-    ts: Date.now() - 480000,
-  },
-  {
-    alertId: "EA-003", severity: "CRITICAL", type: "NETWORK",
-    title: "Suspicious Outbound Connection",
-    detail: "MacBook-Pro-M3 initiated 3.4 GB transfer to unknown IP 185.220.101.x via non-standard port.",
-    deviceId: "d2", deviceDetail: { name: "MacBook-Pro-M3" }, userDetail: { fullName: "S. Chen" },
-    geopolitical: { city: "Singapore", country: "SG" },
-    emergencyContacts: [{ name: "Security Ops", number: "+1-555-0911" }],
-    ts: Date.now() - 900000,
-  },
-];
+export const MOCK_EMERGENCY_ALERTS: EmergencyAlert[] = [];
 
 export const ALERT_ICON: Record<string, string> = {
   BATTERY: "🔋", CPU: "🌡️", NETWORK: "🌐", AUTH: "🔐", MALWARE: "🦠", DEFAULT: "🚨",
@@ -770,27 +726,11 @@ export const SEED_DEVICES: DashDevice[] = MOCK_DEVICES.map((d, i) => ({
   type: TYPE_MAP[i] ?? "desktop",
 }));
 
-export const SEED_SESSIONS: DashSession[] = [
-  { id:"s1", user:"j.morgan",  device:"EXEC-LAPTOP-01",  os:"windows", status:"active", duration:"00:45:23", data:"1.2 GB", latency:6  },
-  { id:"s2", user:"s.chen",    device:"MacBook-Pro-M3",  os:"macos",   status:"active", duration:"01:12:45", data:"3.4 GB", latency:4  },
-  { id:"s3", user:"k.ivanov",  device:"DEVBOX-ARCH",     os:"linux",   status:"paused", duration:"00:08:12", data:"0.3 GB", latency:11 },
-  { id:"s4", user:"a.patel",   device:"iPhone-15-Pro",   os:"ios",     status:"active", duration:"00:22:05", data:"0.8 GB", latency:5  },
-];
+export const SEED_SESSIONS: DashSession[] = [];
 
-export const SEED_USERS: AppUser[] = [
-  { id:"u1", name:"James Morgan",  email:"j.morgan@corp.io", role:"admin",    status:"active",   lastLogin:"Now",       devices:3 },
-  { id:"u2", name:"Sofia Chen",    email:"s.chen@corp.io",   role:"operator", status:"active",   lastLogin:"2h ago",    devices:2 },
-  { id:"u3", name:"Raj Patel",     email:"r.patel@corp.io",  role:"viewer",   status:"active",   lastLogin:"Yesterday", devices:1 },
-  { id:"u4", name:"Tomasz Brooks", email:"t.brooks@corp.io", role:"operator", status:"inactive", lastLogin:"3d ago",    devices:0 },
-];
+export const SEED_USERS: AppUser[] = [];
 
-export const SEED_WIFI: WifiNet[] = [
-  { ssid:"CORP-SECURE-5G",  signal:95, band:"5 GHz",   security:"WPA3", devices:12, threat:false },
-  { ssid:"CORP-GUEST",      signal:78, band:"2.4 GHz", security:"WPA2", devices:4,  threat:false },
-  { ssid:"IoT-Network",     signal:61, band:"2.4 GHz", security:"WPA2", devices:8,  threat:false },
-  { ssid:"UNKNOWN-AP-44F2", signal:42, band:"2.4 GHz", security:"Open", devices:0,  threat:true  },
-  { ssid:"HomeNet_2EX",     signal:35, band:"5 GHz",   security:"WPA2", devices:2,  threat:false },
-];
+export const SEED_WIFI: WifiNet[] = [];
 
 export const ALERT_COLOR: Record<string, string> = {
   critical:"#ef4444", warning:"#f59e0b", info:"#10d9a0", success:"#10b981"
