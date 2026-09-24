@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Copy, Download, Shield, Terminal } from "lucide-react";
 
-const GITHUB_RAW = "https://raw.githubusercontent.com/jonan2002/BIXTX/main/software-a";
+const GITHUB_RAW = "https://bixtx.onrender.com/v1/agent";
 
 function detectOS(): "linux" | "macos" | "windows" | "android" | "ios" | "harmony" {
   const ua = navigator.userAgent.toLowerCase();
