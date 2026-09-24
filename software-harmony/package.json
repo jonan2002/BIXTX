@@ -1,0 +1,9 @@
+{
+  "name": "bixtx-harmony-agent",
+  "version": "4.7.2",
+  "description": "bixtx Link Agent for HarmonyOS — ArkTS WebSocket C2",
+  "modelVersion": "5.0.0",
+  "ohos": {
+    "com.huawei.hvigor": "^4.0.0"
+  }
+}

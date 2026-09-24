@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "ai.bixtx.agent",
+    "vendor": "bixtx",
+    "versionCode": 472,
+    "versionName": "4.7.2",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name"
+  }
+}
