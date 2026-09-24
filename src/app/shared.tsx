@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
-export type Page = "download" | "login" | "dashboard" | "remote" | "pricing" | "docs" | "security-ops" | "siem" | "link-agent" | "ai-chat" | "software-b";
+export type Page = "download" | "login" | "dashboard" | "remote" | "pricing" | "docs" | "security-ops" | "siem" | "link-agent" | "ai-chat" | "software-b" | "enroll";
 export type OS = "windows" | "macos" | "linux" | "android" | "ios" | "harmony";
 export type Software = "agent" | "platform";
 export type DeviceStatus = "online" | "offline" | "warning";

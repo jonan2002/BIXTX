@@ -33,6 +33,7 @@ import {
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { AIChatPage } from "./pages/AIChatPage";
 import { LinkAgentPage } from "./pages/LinkAgentPage";
+import { EnrollPage } from "./pages/EnrollPage";
 import { ImprovedAdminDashboard } from "./software-b/frontend/src/pages/ImprovedAdminDashboard";
 
 // ─── Security Ops Page ────────────────────────────────────────────────────────
@@ -2128,7 +2129,7 @@ function DownloadPage({ setPage }: { setPage: (p: Page) => void }) {
 // ─── Root App ────────────────────────────────────────────────────────────────
 export default function App() {
   const [authed, setAuthed] = useState<boolean>(() => sessionStorage.getItem("authed") === "1");
-  const [page, setPage] = useState<Page>(() => sessionStorage.getItem("authed") === "1" ? "dashboard" : "login");
+  const [page, setPage] = useState<Page>(() => { if (typeof window !== "undefined" && window.location.pathname.startsWith("/enroll/")) return "enroll"; return sessionStorage.getItem("authed") === "1" ? "dashboard" : "login"; });
   const [controlDevice, setControlDevice] = useState<DashDevice | null>(null);
 
   const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes inactivity
