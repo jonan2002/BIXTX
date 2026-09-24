@@ -2260,7 +2260,8 @@ export default function App() {
         {page === "dashboard"    && authed  && <AdminDashboard onControl={handleControl} />}
         {page === "remote"       && authed  && controlDevice && <RemoteControl device={controlDevice} onBack={() => setPage("dashboard")} />}
         {page === "remote"       && authed  && !controlDevice && <AdminDashboard onControl={handleControl} />}
-        {page === "pricing"                 && <PricingPage setPage={setPage} />}
+        {page === "enroll" && <EnrollPage />}
+            {page === "pricing"                 && <PricingPage setPage={setPage} />}
         {page === "docs"                    && <DocsPage />}
         {page === "security-ops" && authed  && <SecurityOpsPage show={show_fn} />}
         {page === "siem"         && authed  && <SIEMPage />}
