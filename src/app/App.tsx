@@ -1837,7 +1837,6 @@ function DownloadPage({ setPage }: { setPage: (p: Page) => void }) {
             style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)", color: "#fff" }}>
             <LayoutDashboard size={14} /> Open Dashboard
           </button>
-          <button onClick={() => setPage("pricing")} className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-all hover:opacity-80"
             style={{ background: "#0a1628", color: "#b8cce8", border: "1px solid rgba(59,130,246,0.3)" }}>
             <CreditCard size={14} /> View Pricing
           </button>
@@ -2109,7 +2108,6 @@ function DownloadPage({ setPage }: { setPage: (p: Page) => void }) {
             <div className="text-sm mt-1" style={{ color: "#6b8ab0" }}>Custom licensing, on-premise hosting, MDM, and 24/7 SLA support.</div>
           </div>
           <div className="flex gap-3">
-            <button onClick={() => setPage("pricing")} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold"
               style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)", color: "#fff" }}>
               Contact Enterprise <ArrowRight size={13} />
             </button>
@@ -2260,8 +2258,6 @@ export default function App() {
         {page === "dashboard"    && authed  && <AdminDashboard onControl={handleControl} />}
         {page === "remote"       && authed  && controlDevice && <RemoteControl device={controlDevice} onBack={() => setPage("dashboard")} />}
         {page === "remote"       && authed  && !controlDevice && <AdminDashboard onControl={handleControl} />}
-        {page === "pricing"                 && <PricingPage setPage={setPage} />}
-        {page === "docs"                    && <DocsPage />}
         {page === "security-ops" && authed  && <SecurityOpsPage show={show_fn} />}
         {page === "siem"         && authed  && <SIEMPage />}
         {page === "software-b"   && authed  && (
