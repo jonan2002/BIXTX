@@ -503,6 +503,8 @@ export function Nav({ page, setPage, authed, onLogout }: { page: Page; setPage: 
   const [mopen, setMopen] = useState(false);
 
   const links: { id: Page; label: string; icon: React.ReactNode; auth?: boolean }[] = [
+    { id: "pricing",      label: "Pricing",      icon: <CreditCard size={13} /> },
+    ...(!authed ? [{ id: "docs" as Page, label: "Docs", icon: <BookOpen size={13} /> }] : []),
     ...(authed ? [
       { id: "dashboard"    as Page, label: "Dashboard",    icon: <LayoutDashboard size={13} />, auth: true },
       { id: "download"     as Page, label: "Downloads",    icon: <Download size={13} />,        auth: true },
