@@ -120,12 +120,12 @@ router.get("/devices/:id/data", authRequired, (req, res) => {
 router.post("/devices/enroll", authRequired, (req, res) => {
   const { label, ttl = "24h" } = req.body;
   const linkId = uuidv4().slice(0, 8).toUpperCase();
-  const enrollUrl = `https://get.bixtx.com/l/${linkId}?key=${ENROLL_KEY}`;
+  const enrollUrl = `https://bixtx.com/enroll/${linkId}?key=${ENROLL_KEY}`;
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
   res.json({
     enrollUrl,
-    shortUrl: `https://get.bixtx.com/l/${linkId}`,
+    shortUrl: `https://bixtx.com/enroll/${linkId}`,
     linkId,
     enrollKey: ENROLL_KEY,
     label: label || "Unnamed device",
