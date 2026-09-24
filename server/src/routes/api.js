@@ -42,6 +42,17 @@ function authRequired(req, res, next) {
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: { error: "Too many requests" } });
 
 // ── POST /v1/auth/token ────────────────────────────────────────────────────
+// — Agent installers (public, no auth) ——————————————————————
+router.get("/agent/install.sh", (req, res) => {
+  const path = require("path");
+  res.sendFile(path.join(__dirname, "../../../software-a/install.sh"));
+});
+
+router.get("/agent/install.ps1", (req, res) => {
+  const path = require("path");
+  res.sendFile(path.join(__dirname, "../../../software-a/install.ps1"));
+});
+
 router.post("/auth/token", authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
