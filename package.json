@@ -80,7 +80,6 @@
     "https": "^1.0.0",
     "dns": "^0.2.2",
     "screenshot-desktop": "^1.15.4",
-    "robotjs": "^0.7.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
