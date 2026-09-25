@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
-export type Page = "download" | "login" | "dashboard" | "remote" | "pricing" | "docs" | "security-ops" | "siem" | "link-agent" | "ai-chat" | "software-b" | "enroll";
+export type Page = "download" | "login" | "dashboard" | "remote" | "pricing" | "docs" | "security-ops" | "siem" | "link-agent" | "ai-chat" | "enroll";
 export type OS = "windows" | "macos" | "linux" | "android" | "ios" | "harmony";
 export type Software = "agent" | "platform";
 export type DeviceStatus = "online" | "offline" | "warning";
@@ -513,7 +513,6 @@ export function Nav({ page, setPage, authed, onLogout }: { page: Page; setPage: 
       { id: "security-ops" as Page, label: "Security Ops", icon: <Shield size={13} />,          auth: true },
       { id: "siem"         as Page, label: "SIEM",         icon: <BarChart2 size={13} />,        auth: true },
       { id: "ai-chat"     as Page, label: "AI Chat",       icon: <MessageSquare size={13} />,    auth: true },
-      { id: "software-b"  as Page, label: "Software B",    icon: <LayoutDashboard size={13} />,  auth: true },
     ] : []),
   ];
 

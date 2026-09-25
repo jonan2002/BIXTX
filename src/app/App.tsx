@@ -34,7 +34,6 @@ import { AdminDashboard } from "./pages/AdminDashboard";
 import { AIChatPage } from "./pages/AIChatPage";
 import { LinkAgentPage } from "./pages/LinkAgentPage";
 import { EnrollPage } from "./pages/EnrollPage";
-import { ImprovedAdminDashboard } from "./software-b/frontend/src/pages/ImprovedAdminDashboard";
 
 // ─── Security Ops Page ────────────────────────────────────────────────────────
 function SecurityOpsPage({ show }: { show: (msg: string, kind?: "success"|"error"|"info") => void }) {
@@ -2225,7 +2224,7 @@ export default function App() {
 
       <ToastStack toasts={rootToasts} />
       <Nav page={page} setPage={p => {
-        const authRequired = ["dashboard","remote","security-ops","siem","download","link-agent","ai-chat","software-b"];
+        const authRequired = ["dashboard","remote","security-ops","siem","download","link-agent","ai-chat"];
         if (authRequired.includes(p) && !authed) { setPage("login"); } else { setPage(p); }
       }} authed={authed} onLogout={handleLogout} />
 
@@ -2265,13 +2264,8 @@ export default function App() {
         {page === "docs"                    && <DocsPage />}
         {page === "security-ops" && authed  && <SecurityOpsPage show={show_fn} />}
         {page === "siem"         && authed  && <SIEMPage />}
-        {page === "software-b"   && authed  && (
-          <div className="min-h-screen" style={{ background:"#f9fafb" }}>
-            <ImprovedAdminDashboard organizationId="org-bixtx-2026" adminEmail="admin@bixtx.com" />
-          </div>
-        )}
         {/* Any auth-required page accessed without login → show login */}
-        {!authed && ["dashboard","remote","security-ops","siem","download","link-agent","ai-chat","software-b"].includes(page) && <LoginPage onLogin={handleLogin} />}
+        {!authed && ["dashboard","remote","security-ops","siem","download","link-agent","ai-chat"].includes(page) && <LoginPage onLogin={handleLogin} />}
       </div>
     </div>
   );
