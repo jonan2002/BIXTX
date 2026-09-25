@@ -20,10 +20,10 @@ import {
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
-export type Page = "download" | "login" | "dashboard" | "remote" | "pricing" | "docs" | "security-ops" | "siem" | "link-agent" | "ai-chat" | "enroll";
+export type Page = "download" | "login" | "dashboard" | "remote" | "pricing" | "docs" | "security-ops" | "siem" | "link-agent" | "ai-chat" | "software-b" | "enroll" | "settings";
 export type OS = "windows" | "macos" | "linux" | "android" | "ios" | "harmony";
 export type Software = "agent" | "platform";
-export type DeviceStatus = "online" | "offline" | "warning";
+export type DeviceStatus = "online" | "offline" | "warning" | "suspended";
 export type DeployStatus = "pending-approval" | "approved" | "running" | "paused" | "success" | "failed" | "rolled-back" | "contained";
 
 export interface DeployJob {
@@ -82,13 +82,7 @@ export const MOCK_DEPLOY_JOBS: DeployJob[] = [];
 
 export const MOCK_NET_IFACES: NetworkIface[] = [];
 
-export const ALERTS = [
-  { id: 1, level: "critical", msg: "Galaxy-S24-Ultra: Battery at 23% — remote power warning", time: "2m ago" },
-  { id: 2, level: "warning", msg: "KIOSK-UBUNTU-07: CPU at 78% — anomaly detected", time: "8m ago" },
-  { id: 3, level: "info", msg: "New device enrolled: Pixel-9-Pro via QR code", time: "34m ago" },
-  { id: 4, level: "info", msg: "OTA agent update pushed to 6 devices successfully", time: "1h ago" },
-  { id: 5, level: "success", msg: "WORKSTATION-WIN11 came offline — offline recording active", time: "3h ago" },
-];
+export const ALERTS: { id: number; level: string; msg: string; time: string }[] = [];
 
 export const MOCK_EMERGENCY_ALERTS: EmergencyAlert[] = [];
 
@@ -503,8 +497,6 @@ export function Nav({ page, setPage, authed, onLogout }: { page: Page; setPage: 
   const [mopen, setMopen] = useState(false);
 
   const links: { id: Page; label: string; icon: React.ReactNode; auth?: boolean }[] = [
-    { id: "pricing",      label: "Pricing",      icon: <CreditCard size={13} /> },
-    ...(!authed ? [{ id: "docs" as Page, label: "Docs", icon: <BookOpen size={13} /> }] : []),
     ...(authed ? [
       { id: "dashboard"    as Page, label: "Dashboard",    icon: <LayoutDashboard size={13} />, auth: true },
       { id: "download"     as Page, label: "Downloads",    icon: <Download size={13} />,        auth: true },
@@ -513,13 +505,15 @@ export function Nav({ page, setPage, authed, onLogout }: { page: Page; setPage: 
       { id: "security-ops" as Page, label: "Security Ops", icon: <Shield size={13} />,          auth: true },
       { id: "siem"         as Page, label: "SIEM",         icon: <BarChart2 size={13} />,        auth: true },
       { id: "ai-chat"     as Page, label: "AI Chat",       icon: <MessageSquare size={13} />,    auth: true },
+      { id: "software-b"  as Page, label: "Software B",    icon: <LayoutDashboard size={13} />,   auth: true },
+      { id: "settings"    as Page, label: "Settings",      icon: <Settings size={13} />,          auth: true },
     ] : []),
   ];
 
   return (
     <nav className="relative z-20 border-b" style={{ borderColor: "rgba(59,130,246,0.2)", background: "rgba(7,6,15,0.95)", backdropFilter: "blur(14px)" }}>
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <button onClick={() => setPage(authed ? "dashboard" : "pricing")} className="flex items-center gap-3">
+        <button onClick={() => setPage(authed ? "dashboard" : "login")} className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "linear-gradient(135deg,#3b82f6,#10d9a0)" }}>
             <Shield size={15} color="#fff" />
           </div>
@@ -556,7 +550,7 @@ export function Nav({ page, setPage, authed, onLogout }: { page: Page; setPage: 
           ) : (
             <button onClick={() => setPage("login")} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all hover:opacity-90"
               style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)", color: "#fff" }}>
-              <Key size={13} /> Admin Login
+              <Key size={13} /> Login
             </button>
           )}
           <button className="md:hidden p-2 rounded-lg" style={{ color: "#6b8ab0" }} onClick={() => setMopen(v => !v)}>
@@ -580,55 +574,116 @@ export function Nav({ page, setPage, authed, onLogout }: { page: Page; setPage: 
 }
 
 // ─── Login Page ─────────────────────────────────────────────────────────────
-export function LoginPage({ onLogin }: { onLogin: (email: string, password: string) => Promise<void> }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+export function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
+  const API = window.location.hostname === "localhost"
+    ? "http://localhost:3000/v1"
+    : "https://bixtx.onrender.com/v1";
+
+  const [email, setEmail] = useState("systems.manager@bixtx.com");
+  const [pass, setPass] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [err, setErr] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setErr("");
     setLoading(true);
     try {
-      await onLogin(email, password);
-    } catch (err: any) {
-      setError("Invalid credentials. Access denied.");
-    } finally {
+      const r = await fetch(`${API}/auth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: pass }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setErr(data.error || "Invalid credentials");
+        setLoading(false);
+        return;
+      }
+      onLogin(data.token);
+    } catch {
+      setErr("Cannot reach server — check your connection");
       setLoading(false);
     }
   };
 
   return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-6 py-20 relative">
+      <div className="absolute inset-0 pointer-events-none"
+        style={{ background: "radial-gradient(ellipse 60% 50% at 50% 30%,rgba(59,130,246,0.12) 0%,transparent 70%)" }} />
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "linear-gradient(135deg,#3b82f6,#10d9a0)" }}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+            style={{ background: "linear-gradient(135deg,#3b82f6,#10d9a0)", boxShadow: "0 0 40px rgba(59,130,246,0.4)" }}>
             <Shield size={30} color="#fff" />
           </div>
-          <h1 className="text-2xl font-black mb-1" style={{ color: "#e2eaf6" }}>Admin Console</h1>
-          <p className="text-sm" style={{ color: "#6b8ab0" }}>Authorized personnel only</p>
+          <h1 className="text-2xl font-black mb-1" style={{ color: "#e2eaf6" }}>User Login</h1>
+          <p className="text-sm" style={{ color: "#6b8ab0" }}>Sign in to your bixtx.com account</p>
         </div>
-        <div className="rounded-2xl border p-8" style={{ background: "#0a1628", borderColor: "rgba(59,130,246,0.25)" }}>
+
+        <div className="rounded-2xl border p-8" style={{ background: "#0a1628", borderColor: "rgba(59,130,246,0.25)", boxShadow: "0 0 60px rgba(59,130,246,0.08)" }}>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-mono uppercase tracking-widest mb-2" style={{ color: "#6b8ab0" }}>Admin Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={{ background: "#0d1930", border: "1px solid rgba(59,130,246,0.3)", color: "#e2eaf6" }} placeholder="systems.manager@bixtx.com" />
+              <label className="block text-xs font-mono uppercase tracking-widest mb-2" style={{ color: "#6b8ab0" }}>Email</label>
+              <input value={email} onChange={e => setEmail(e.target.value)}
+                type="email" autoComplete="username"
+                className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all"
+                style={{ background: "#0d1930", border: "1px solid rgba(59,130,246,0.3)", color: "#e2eaf6" }}
+                placeholder="systems.manager@bixtx.com" />
             </div>
             <div>
               <label className="block text-xs font-mono uppercase tracking-widest mb-2" style={{ color: "#6b8ab0" }}>Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={{ background: "#0d1930", border: "1px solid rgba(59,130,246,0.3)", color: "#e2eaf6" }} placeholder="********" />
+              <input type="password" value={pass} onChange={e => setPass(e.target.value)}
+                autoComplete="current-password"
+                className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+                style={{ background: "#0d1930", border: "1px solid rgba(59,130,246,0.3)", color: "#e2eaf6" }}
+                placeholder="••••••••" />
             </div>
-            {error && <p className="text-xs text-center" style={{ color: "#ef4444" }}>{error}</p>}
-            <button type="submit" disabled={loading} className="w-full py-3 rounded-xl text-sm font-bold" style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)", color: "#fff" }}>
-              {loading ? "Authenticating..." : "Sign In"}
+            {err && <p className="text-xs" style={{ color: "#ef4444" }}>{err}</p>}
+            <button type="submit" disabled={loading || !email || !pass}
+              className="w-full py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 flex items-center justify-center gap-2 disabled:opacity-40"
+              style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)", color: "#fff" }}>
+              {loading ? <><RefreshCw size={14} className="animate-spin" />Authenticating…</> : <><Key size={14} />Sign In</>}
             </button>
           </form>
+
+          <div className="mt-6 pt-4 border-t flex items-center gap-2 text-xs" style={{ borderColor: "rgba(59,130,246,0.15)", color: "#6b8ab0" }}>
+            <Lock size={11} color="#3b82f6" />
+            Connection encrypted with TLS 1.3 · AES-256-GCM
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
+// ─── Toast ───────────────────────────────────────────────────────────────────
+export type ToastItem = { id: number; msg: string; kind: "success"|"error"|"info" };
+
+export function ToastStack({ toasts }: { toasts: ToastItem[] }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-50 space-y-2 pointer-events-none">
+      {toasts.map(t => (
+        <div key={t.id} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-2xl"
+          style={{ background: t.kind==="success"?"#10b981":t.kind==="error"?"#ef4444":"#10d9a0", color:"#fff", minWidth:220 }}>
+          <Check size={14} strokeWidth={3}/>{t.msg}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function useToast() {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const show = (msg: string, kind: "success"|"error"|"info" = "success") => {
+    const id = Date.now();
+    setToasts(t => [...t, { id, msg, kind }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000);
+  };
+  return { show, toasts };
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
 export function Modal({ open, onClose, title, children, wide }: {
   open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean;
 }) {
@@ -701,6 +756,7 @@ export function ActionBtn({ children, onClick, color="#3b82f6", outline, full, d
 // ─── Dashboard types & seed data ──────────────────────────────────────────────
 export interface DashDevice extends Device {
   performance: number; health: "excellent"|"good"|"warning"; type: "desktop"|"mobile";
+  softwareA?: "active" | "inactive" | "none";
 }
 export interface DashSession {
   id: string; user: string; device: string; os: OS;
@@ -909,12 +965,7 @@ export function DeployLinkPanel({ show }: {
   const [qrLoading,    setQrLoading]    = useState(false);
   const [smsSending,   setSmsSending]   = useState(false);
   const [emailSending, setEmailSending] = useState(false);
-  const [deployLog,    setDeployLog]    = useState([
-    { method:"SMS",     target:"+1-555-0142",         status:"installed",   dev:"Galaxy-S24-Ultra", ts:"14:28" },
-    { method:"Email",   target:"s.mitchell@corp.io",  status:"installed",   dev:"EXEC-LAPTOP-01",  ts:"13:45" },
-    { method:"QR Code", target:"Scanned in Singapore", status:"installed",  dev:"MacBook-Pro-M3",   ts:"12:30" },
-    { method:"WhatsApp",target:"+44-7700-900142",     status:"link opened", dev:"—",               ts:"11:00" },
-  ]);
+  const [deployLog, setDeployLog] = useState<{method:string;target:string;status:string;dev:string;ts:string}[]>([]);
 
   const generateQR = () => {
     setQrLoading(true);
@@ -1269,33 +1320,3 @@ export function DeployLinkPanel({ show }: {
   );
 }
 
-
-// — useToast hook ——————————————————————
-export function useToast() {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const show = (msg: string, kind: "success" | "error" | "info" = "success") => {
-    const id = Date.now();
-    setToasts(t => [...t, { id, msg, kind }]);
-    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000);
-  };
-  return { toasts, show };
-}
-
-// — ToastStack component ——————————————————
-export function ToastStack({ toasts }: { toasts: ToastItem[] }) {
-  return (
-    <div className="fixed bottom-6 right-6 z-50 space-y-2 pointer-events-none">
-      {toasts.map(t => (
-        <div key={t.id} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-2xl"
-          style={{
-            background: t.kind==="success"?"#10b981":t.kind==="error"?"#ef4444":"#10d9a0",
-            color: "#fff",
-            minWidth: 220
-          }}>
-          <Check size={14} strokeWidth={3} />
-          {t.msg}
-        </div>
-      ))}
-    </div>
-  );
-}

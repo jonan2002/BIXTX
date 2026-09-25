@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Lawrix Link Software - Development Script
+# bixtx Link Software - Development Script
 
 set -e
 
-echo "🔧 Starting Lawrix Link in development mode..."
+echo "🔧 Starting bixtx Link in development mode..."
 
 # Colors
 GREEN='\033[0;32m'

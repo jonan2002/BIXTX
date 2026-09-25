@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Lawrix Link Software - Build Script
+# bixtx Link Software - Build Script
 
 set -e
 
-echo "🚀 Building Lawrix Link Software..."
+echo "🚀 Building bixtx Link Software..."
 
 # Colors
 RED='\033[0;31m'

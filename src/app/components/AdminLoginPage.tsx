@@ -84,8 +84,8 @@ export function AdminLoginPage({ onLogin, onBack }: AdminLoginPageProps) {
       const newAttempts = credAttempts + 1;
       setCredAttempts(newAttempts);
 
-      // Demo: accept admin@bixtx.com — in production validate server-side
-      const credOk = email.toLowerCase() === 'admin@bixtx.com';
+      // Demo: accept system.manager@bixtx.com — in production validate server-side
+      const credOk = email.toLowerCase() === 'system.manager@bixtx.com';
       if (credOk) {
         setStep('2fa');
         return;
@@ -205,7 +205,7 @@ export function AdminLoginPage({ onLogin, onBack }: AdminLoginPageProps) {
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    placeholder="admin@bixtx.com"
+                    placeholder="system.manager@bixtx.com"
                     autoComplete="username"
                     required
                     disabled={isLocked || loading}

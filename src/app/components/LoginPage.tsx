@@ -92,9 +92,12 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
         setError(`Too many failed attempts. Locked for ${LOCKOUT_SECS} seconds.`);
         return;
       }
-      // Attempt real login via backend API
-      onLogin(email, password);
-      return;
+      // Demo: accept system.manager@bixtx.com / any 8+ char password
+      if (email.toLowerCase() === 'system.manager@bixtx.com') {
+        setAttempts(0);
+        onLogin();
+        return;
+      }
       const left = MAX_ATTEMPTS - newAttempts;
       setError(`Invalid credentials. ${left} attempt${left === 1 ? '' : 's'} remaining.`);
     }, 600);

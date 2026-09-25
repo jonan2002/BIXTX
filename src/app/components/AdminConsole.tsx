@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { 
-  Users, 
-  Activity, 
+import {
+  Users,
+  Activity,
   Server,
   Clock,
   TrendingUp,
@@ -12,11 +12,15 @@ import {
   BarChart3,
   Zap,
   Database,
-  Mail,
   Shield,
-  Plus,
   Trash2,
-  Edit
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  Cpu,
+  MemoryStick,
+  HardDrive,
+  AlertTriangle,
 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
@@ -105,6 +109,63 @@ const initialUsers: User[] = [
   },
 ];
 
+interface UpgradeRequest {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  fromVersion: string;
+  toVersion: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'denied';
+  requestedAt: string;
+  env: {
+    platform: string;
+    osVersion: string;
+    nodeVersion: string;
+    cpuCount: number;
+    totalMemMB: number;
+    freeMemMB: number;
+    diskFreeMB: number | null;
+    uptimeSeconds: number;
+  };
+}
+
+const SEED_UPGRADE_REQUESTS: UpgradeRequest[] = [
+  {
+    id: 'upg-001',
+    deviceId: 'EXEC-LAPTOP-01',
+    deviceName: 'EXEC-LAPTOP-01',
+    fromVersion: '4.7.1',
+    toVersion: '4.7.2',
+    reason: 'Periodic compatibility check — Node 22 runtime available',
+    status: 'pending',
+    requestedAt: '14:28:00',
+    env: { platform: 'win32', osVersion: 'Windows 11 22H2', nodeVersion: 'v20.11.0', cpuCount: 8, totalMemMB: 16384, freeMemMB: 4200, diskFreeMB: 38400, uptimeSeconds: 86400 },
+  },
+  {
+    id: 'upg-002',
+    deviceId: 'MacBook-Pro-M3',
+    deviceName: 'MacBook-Pro-M3',
+    fromVersion: '4.6.9',
+    toVersion: '4.7.2',
+    reason: 'Two minor versions behind — security patch available',
+    status: 'pending',
+    requestedAt: '13:55:00',
+    env: { platform: 'darwin', osVersion: 'macOS 14.4', nodeVersion: 'v18.20.2', cpuCount: 12, totalMemMB: 32768, freeMemMB: 12800, diskFreeMB: 128000, uptimeSeconds: 259200 },
+  },
+  {
+    id: 'upg-003',
+    deviceId: 'KIOSK-UBUNTU-07',
+    deviceName: 'KIOSK-UBUNTU-07',
+    fromVersion: '4.7.0',
+    toVersion: '4.7.2',
+    reason: 'Low memory detected — patch includes memory optimisation',
+    status: 'pending',
+    requestedAt: '12:40:00',
+    env: { platform: 'linux', osVersion: 'Ubuntu 22.04.4 LTS', nodeVersion: 'v20.12.0', cpuCount: 4, totalMemMB: 4096, freeMemMB: 320, diskFreeMB: 5200, uptimeSeconds: 604800 },
+  },
+];
+
 export function AdminConsole() {
   const [users, setUsers] = useState<User[]>(initialUsers);
   const [showAddUserDialog, setShowAddUserDialog] = useState(false);
@@ -115,6 +176,15 @@ export function AdminConsole() {
   const [p2pEnabled, setP2pEnabled] = useState(true);
   const [autoDiscoveryEnabled, setAutoDiscoveryEnabled] = useState(true);
   const [requireApproval, setRequireApproval] = useState(true);
+  const [upgradeRequests, setUpgradeRequests] = useState<UpgradeRequest[]>(SEED_UPGRADE_REQUESTS);
+  const [secPolicies, setSecPolicies] = useState<Record<string, boolean>>({
+    'Require 2FA for all admins':   true,
+    'Concurrent session limit (1)': true,
+    'IP allowlist enforcement':     false,
+    'Off-hours access alerts':      true,
+    'Geo-velocity checks':          true,
+    'SAML / SSO required':          false,
+  });
 
   const handleAddUser = () => {
     if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {
@@ -186,6 +256,20 @@ export function AdminConsole() {
     setRequireApproval(!requireApproval);
     toast.success(requireApproval ? 'Admin approval no longer required' : 'Admin approval now required for device pairing');
   };
+
+  const handleApproveUpgrade = (id: string) => {
+    setUpgradeRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'approved' } : r));
+    const req = upgradeRequests.find(r => r.id === id);
+    toast.success(`Upgrade approved for ${req?.deviceName} → v${req?.toVersion}`);
+  };
+
+  const handleDenyUpgrade = (id: string) => {
+    setUpgradeRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'denied' } : r));
+    const req = upgradeRequests.find(r => r.id === id);
+    toast.error(`Upgrade denied for ${req?.deviceName}`);
+  };
+
+  const pendingUpgrades = upgradeRequests.filter(r => r.status === 'pending').length;
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
@@ -269,7 +353,7 @@ export function AdminConsole() {
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="sessions" className="space-y-6">
-        <TabsList className="bg-slate-900 border border-slate-800">
+        <TabsList className="bg-slate-900 border border-slate-800 flex-wrap h-auto gap-1 p-1">
           <TabsTrigger value="sessions" className="data-[state=active]:bg-slate-800">
             Active Sessions
           </TabsTrigger>
@@ -281,6 +365,17 @@ export function AdminConsole() {
           </TabsTrigger>
           <TabsTrigger value="users" className="data-[state=active]:bg-slate-800">
             User Management
+          </TabsTrigger>
+          <TabsTrigger value="security" className="data-[state=active]:bg-slate-800">
+            Auth Security
+          </TabsTrigger>
+          <TabsTrigger value="upgrades" className="data-[state=active]:bg-slate-800 relative">
+            Agent Upgrades
+            {pendingUpgrades > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-amber-500 text-black rounded-full">
+                {pendingUpgrades}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="network" className="data-[state=active]:bg-slate-800">
             Network Settings
@@ -537,6 +632,210 @@ export function AdminConsole() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* ── Auth Security Tab ── */}
+        <TabsContent value="security" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Auth health checklist */}
+            <Card className="bg-slate-900 border-slate-800 p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Shield className="w-5 h-5 text-cyan-400" />
+                <h2 className="text-lg text-white">Auth Health</h2>
+              </div>
+              {[
+                { label: 'Brute-Force Guard',   ok: true,  detail: '5-attempt lockout · 60 s cooldown' },
+                { label: 'TOTP Enforcement',    ok: true,  detail: '6-digit · 30 s expiry · 3 tries max' },
+                { label: 'Session Timeout',     ok: true,  detail: '15 min inactivity auto-logout' },
+                { label: 'Token in URL',        ok: false, detail: 'WS token moved to subprotocol header' },
+                { label: 'Hardcoded Creds',     ok: false, detail: 'Removed — server-side cookie auth' },
+                { label: 'Device Fingerprint',  ok: true,  detail: 'Per-session UUID bound to browser' },
+                { label: 'Audit Logging',       ok: true,  detail: 'Immutable — every attempt recorded' },
+                { label: 'IP Geo-velocity',     ok: true,  detail: 'Anomaly detection active' },
+              ].map(item => (
+                <div key={item.label} className="flex items-start gap-3 py-2.5 border-b border-slate-800 last:border-0">
+                  {item.ok
+                    ? <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                    : <XCircle    className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />}
+                  <div>
+                    <p className={`text-sm font-medium ${item.ok ? 'text-white' : 'text-red-400'}`}>{item.label}</p>
+                    <p className="text-xs text-slate-400 font-mono">{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </Card>
+
+            {/* Security policy toggles */}
+            <Card className="bg-slate-900 border-slate-800 p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Settings className="w-5 h-5 text-emerald-400" />
+                <h2 className="text-lg text-white">Security Policies</h2>
+              </div>
+              <div className="space-y-3">
+                {Object.entries(secPolicies).map(([label, on]) => (
+                  <div key={label} className="flex items-center justify-between py-2 border-b border-slate-800 last:border-0">
+                    <span className={`text-sm ${on ? 'text-white' : 'text-slate-400'}`}>{label}</span>
+                    <button
+                      onClick={() => {
+                        setSecPolicies(p => ({ ...p, [label]: !on }));
+                        toast.success(`${label}: ${!on ? 'ON' : 'OFF'}`);
+                      }}
+                      className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
+                      style={{ background: on ? '#10d9a0' : '#1e293b' }}>
+                      <div className="absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all"
+                        style={{ left: on ? '22px' : '2px' }} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => toast.success('Security policies saved')}
+                className="mt-4 w-full py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: 'linear-gradient(135deg,#059669,#10d9a0)' }}>
+                Save Policies
+              </button>
+            </Card>
+
+            {/* Recent auth events */}
+            <Card className="bg-slate-900 border-slate-800 p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <AlertTriangle className="w-5 h-5 text-amber-400" />
+                <h2 className="text-lg text-white">Recent Auth Events</h2>
+              </div>
+              {[
+                { ok: true,  ts: '14:32:11', actor: 'admin@bixtx.com', event: 'Login success · 2FA verified',      ip: '192.168.1.42' },
+                { ok: false, ts: '14:20:03', actor: 'unknown',          event: 'Failed login · bad password (3/5)', ip: '45.33.32.156' },
+                { ok: false, ts: '13:58:44', actor: 'unknown',          event: 'Brute-force blocked · 5 attempts',  ip: '45.33.32.156' },
+                { ok: true,  ts: '13:10:07', actor: 'ops@bixtx.com',   event: 'Login success · 2FA verified',      ip: '10.0.0.15'    },
+                { ok: false, ts: '12:44:20', actor: 'unknown',          event: 'Invalid TOTP (3/3) · locked',       ip: '198.51.100.9' },
+                { ok: true,  ts: '09:01:55', actor: 'admin@bixtx.com', event: 'Session expired · auto-logout',     ip: '192.168.1.42' },
+              ].map((ev, i) => (
+                <div key={i} className="flex items-start gap-2.5 py-2.5 border-b border-slate-800 last:border-0">
+                  <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${ev.ok ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                  <div className="min-w-0">
+                    <p className={`text-[11px] font-mono ${ev.ok ? 'text-emerald-400' : 'text-red-400'}`}>{ev.ts} · {ev.ip}</p>
+                    <p className="text-xs font-medium text-white truncate">{ev.actor}</p>
+                    <p className="text-[11px] text-slate-400">{ev.event}</p>
+                  </div>
+                </div>
+              ))}
+              <button
+                onClick={() => toast.success('Audit log exported')}
+                className="mt-4 w-full py-2 rounded-lg text-sm font-semibold border border-slate-700 text-slate-300 hover:bg-slate-800 transition-colors">
+                Export Audit Log
+              </button>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ── Agent Upgrades Tab ── */}
+        <TabsContent value="upgrades" className="space-y-6">
+          <Card className="bg-slate-900 border-slate-800 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl text-white">Agent Self-Upgrade Requests</h2>
+                <p className="text-sm text-slate-400 mt-1">
+                  Agents propose upgrades based on their device environment. Approve or deny each request below.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {pendingUpgrades > 0 && (
+                  <span className="px-3 py-1 rounded-full text-sm font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    {pendingUpgrades} pending
+                  </span>
+                )}
+                <button onClick={() => toast.success('Refreshed')} className="p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white transition-colors">
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {upgradeRequests.map(req => (
+                <div key={req.id} className="rounded-xl border border-slate-700 bg-slate-800/50 overflow-hidden">
+                  {/* Header row */}
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                        req.status === 'pending'  ? 'bg-amber-400 animate-pulse' :
+                        req.status === 'approved' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <div>
+                        <p className="text-white font-semibold">{req.deviceName}</p>
+                        <p className="text-xs text-slate-400 font-mono">{req.deviceId} · requested {req.requestedAt}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-xs text-slate-400">Version</p>
+                        <p className="text-sm font-mono text-white">v{req.fromVersion} → <span className="text-cyan-400">v{req.toVersion}</span></p>
+                      </div>
+                      {req.status === 'pending' ? (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleApproveUpgrade(req.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-80"
+                            style={{ background: 'linear-gradient(135deg,#059669,#10d9a0)' }}>
+                            <CheckCircle className="w-3.5 h-3.5" /> Approve
+                          </button>
+                          <button
+                            onClick={() => handleDenyUpgrade(req.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-colors">
+                            <XCircle className="w-3.5 h-3.5" /> Deny
+                          </button>
+                        </div>
+                      ) : (
+                        <span className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${
+                          req.status === 'approved'
+                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                            : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
+                          {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Env status row */}
+                  <div className="px-5 py-3 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Reason</p>
+                      <p className="text-xs text-slate-300 leading-snug">{req.reason}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Platform</p>
+                      <p className="text-xs text-white font-mono">{req.env.platform}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">{req.env.osVersion}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <Cpu className="w-3 h-3" /> CPU
+                      </p>
+                      <p className="text-xs text-white">{req.env.cpuCount} cores</p>
+                      <p className="text-[10px] text-slate-400 font-mono">{req.env.nodeVersion}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <MemoryStick className="w-3 h-3" /> RAM
+                      </p>
+                      <p className="text-xs text-white">{Math.round(req.env.freeMemMB / 1024 * 10) / 10} GB free</p>
+                      <p className="text-[10px] text-slate-400">{Math.round(req.env.totalMemMB / 1024)} GB total</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <HardDrive className="w-3 h-3" /> Disk
+                      </p>
+                      <p className="text-xs text-white">
+                        {req.env.diskFreeMB ? `${Math.round(req.env.diskFreeMB / 1024)} GB free` : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Uptime</p>
+                      <p className="text-xs text-white">{Math.floor(req.env.uptimeSeconds / 86400)}d {Math.floor((req.env.uptimeSeconds % 86400) / 3600)}h</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </Card>
         </TabsContent>

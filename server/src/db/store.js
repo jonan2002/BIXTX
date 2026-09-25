@@ -192,5 +192,4 @@ function createMemoryStore() {
   };
 }
 
-const users = { getByEmail: (email) => db.prepare("SELECT id, email, password_hash, role FROM admin_users WHERE email = ?").get(email) || null };
-module.exports = { init, devices, data, alerts, users };
+module.exports = { init, devices, data, alerts };

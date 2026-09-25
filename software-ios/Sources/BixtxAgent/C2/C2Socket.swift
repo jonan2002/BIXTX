@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// WebSocket connection to the bixtx C2 server.
 /// Uses URLSession's native WebSocket support (iOS 13+).
@@ -15,7 +18,11 @@ public final class C2Socket: NSObject {
     var onDisconnect: (() -> Void)?
 
     private var deviceId: String {
-        UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        #if canImport(UIKit)
+        return UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        #else
+        return UUID().uuidString
+        #endif
     }
 
     public override init() {

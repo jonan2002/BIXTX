@@ -1,0 +1,8 @@
+-keep class ai.bixtx.agent.** { *; }
+-keep class okhttp3.** { *; }
+-keepnames class okhttp3.internal.publicsuffix.PublicSuffixDatabase
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keep class com.google.gson.** { *; }
+-keepattributes *Annotation*
+-keepattributes Signature

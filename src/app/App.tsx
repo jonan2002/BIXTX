@@ -24,7 +24,7 @@ import {
   OS_COLOR, OS_ICON, OS_LABEL,
   PLATFORMS, AGENT_PLATFORMS, REQUIREMENTS,
   DOCS_SECTIONS, DOCS_CONTENT,
-  SEED_DEVICES, MOCK_EMERGENCY_ALERTS, ALERT_ICON,
+  ALERT_ICON,
   Chip, DownloadRow, StatCard,
   Nav, LoginPage, ToastStack, useToast,
   Modal, FLabel, FSelect, ActionBtn, CodeBlock, InfoBox, copyToClip,
@@ -34,22 +34,21 @@ import { AdminDashboard } from "./pages/AdminDashboard";
 import { AIChatPage } from "./pages/AIChatPage";
 import { LinkAgentPage } from "./pages/LinkAgentPage";
 import { EnrollPage } from "./pages/EnrollPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { ImprovedAdminDashboard } from "./software-b/frontend/src/pages/ImprovedAdminDashboard";
 
 // ─── Security Ops Page ────────────────────────────────────────────────────────
 function SecurityOpsPage({ show }: { show: (msg: string, kind?: "success"|"error"|"info") => void }) {
+  const API = window.location.hostname === "localhost" ? "http://localhost:3000/v1" : "https://bixtx.onrender.com/v1";
+  const tok = () => sessionStorage.getItem("token") || "";
+
   const [secTab, setSecTab] = useState<"emergency"|"device"|"network"|"mdm"|"antiforensics"|"airgap">("emergency");
-  const [secAlerts, setSecAlerts] = useState<EmergencyAlert[]>(MOCK_EMERGENCY_ALERTS.slice());
+  const [secAlerts, setSecAlerts] = useState<EmergencyAlert[]>([]);
   const [selectedAlert, setSelectedAlert] = useState<EmergencyAlert | null>(null);
-  const [devices]            = useState(SEED_DEVICES);
+  const [devices, setDevices] = useState<DashDevice[]>([]);
   const [lockedDevs, setLockedDevs]   = useState<string[]>([]);
   const [wipedDevs,  setWipedDevs]    = useState<string[]>([]);
-  const [processes]                   = useState([
-    { pid:1234, dev:"EXEC-LAPTOP-01",  name:"chrome.exe",       cpu:12, mem:320, injected:false },
-    { pid:4567, dev:"KIOSK-UBUNTU-07", name:"nginx",             cpu:3,  mem:64,  injected:false },
-    { pid:8901, dev:"MacBook-Pro-M3",   name:"Safari",           cpu:8,  mem:280, injected:false },
-    { pid:2345, dev:"DEVBOX-ARCH",     name:"sshd",              cpu:1,  mem:12,  injected:false },
-    { pid:6789, dev:"EXEC-LAPTOP-01",  name:"outlook.exe",       cpu:5,  mem:180, injected:true  },
-  ]);
+  const [processes]                   = useState<{ pid:number; dev:string; name:string; cpu:number; mem:number; injected:boolean }[]>([]);
   const [netRules, setNetRules] = useState([
     { id:"n1", type:"VPN Kill Switch",    dev:"All Devices",      active:true  },
     { id:"n2", type:"DNS Hijacking",      dev:"KIOSK-UBUNTU-07", active:false },
@@ -82,6 +81,20 @@ function SecurityOpsPage({ show }: { show: (msg: string, kind?: "success"|"error
     { id:"af7", name:"Timestomp Artifacts",         active:false, color:"#f59e0b" },
     { id:"af8", name:"Encrypted Agent Payload",     active:true,  color:"#ef4444" },
   ]);
+
+  useEffect(() => {
+    const t = tok();
+    if (!t) return;
+    fetch(`${API}/devices`, { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setDevices(d.devices ?? []))
+      .catch(() => {});
+    fetch(`${API}/alerts`, { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setSecAlerts(d.alerts ?? []))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const SEC_TABS = [
     { id:"emergency",    label:"⚡ Emergency Alerts" },
@@ -338,7 +351,7 @@ function SecurityOpsPage({ show }: { show: (msg: string, kind?: "success"|"error
                 { dev:"DEVBOX-ARCH",     ssid:"VPN-Relay-Node-7",  last:"1h ago",         enc:"WPA2" },
               ].map((w,i) => (
                 <div key={i} className="flex items-center gap-4 px-5 py-2.5 hover:bg-purple-500/5 transition-colors">
-                  <span className="text-sm">{OS_ICON[SEED_DEVICES.find(d=>d.name===w.dev)?.os??"windows"]}</span>
+                  <span className="text-sm">{OS_ICON[devices.find(d=>d.name===w.dev)?.os??"windows"]}</span>
                   <span className="text-xs font-semibold flex-shrink-0 w-40" style={{ color:"#e2eaf6" }}>{w.dev}</span>
                   <span className="text-xs font-mono flex-1" style={{ color:"#10d9a0" }}>{w.ssid}</span>
                   <Chip color={w.enc==="Open"?"#ef4444":w.enc==="WPA3"?"#10b981":"#6b8ab0"}>{w.enc}</Chip>
@@ -392,7 +405,7 @@ function SecurityOpsPage({ show }: { show: (msg: string, kind?: "success"|"error
               <ActionBtn onClick={async () => {
                 const enforced = mdmPolicies.filter(p=>p.enforced).length;
                 try {
-                  await fetch("https://bixtx.onrender.com/v1/mdm/push", {
+                  await fetch(`${window.location.hostname === "localhost" ? "http://localhost:3000" : "https://bixtx.onrender.com"}/v1/mdm/push`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ policies: mdmPolicies.map(p => ({ policyId: p.id, policyName: p.name, enforced: p.enforced, platform: p.platform })) }),
@@ -433,7 +446,7 @@ function SecurityOpsPage({ show }: { show: (msg: string, kind?: "success"|"error
                       const nextEnforced = !p.enforced;
                       setMdmPolicies(prev => prev.map(x => x.id===p.id ? {...x, enforced:nextEnforced} : x));
                       try {
-                        await fetch("https://bixtx.onrender.com/v1/mdm/push", {
+                        await fetch(`${window.location.hostname === "localhost" ? "http://localhost:3000" : "https://bixtx.onrender.com"}/v1/mdm/push`, {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ policies: [{ policyId: p.id, policyName: p.name, enforced: nextEnforced, platform: p.platform }] }),
@@ -589,7 +602,7 @@ function SecurityOpsPage({ show }: { show: (msg: string, kind?: "success"|"error
             <div className="font-bold text-sm mb-4" style={{ color:"#e2eaf6" }}>Covert Payload Builder</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <FLabel label="Target Device">
-                <FSelect value="DEVBOX-ARCH" onChange={() => {}} options={SEED_DEVICES.map(d=>({val:d.name,label:d.name}))}/>
+                <FSelect value={devices[0]?.name ?? ""} onChange={() => {}} options={devices.map(d=>({val:d.name,label:d.name}))}/>
               </FLabel>
               <FLabel label="Channel">
                 <FSelect value="RF Exfiltration" onChange={() => {}} options={["Ultrasound Channel","RF Exfiltration","USB Power Modulation","Optical (LED blink)"].map(x=>({val:x,label:x}))}/>
@@ -1400,46 +1413,7 @@ const SENSOR_ICON: Record<string, string> = {
   PROLONGED_ACTIVITY: "⏱️",
 };
 
-const MOCK_SENSOR_ALERTS: SensorAlert[] = [
-  {
-    alertId: "em-001", type: "FALL", severity: "CRITICAL",
-    title: "🆘 Fall / Major Physical Impact Detected",
-    detail: "Device experienced sudden impact (Δ3.1g) followed by 9s of stillness. User may have fallen.",
-    action: "Attempt to contact user immediately. Dispatch emergency services if unreachable.",
-    readings: { impactG: "3.1", stillnessMs: 9000, currentMag: "0.1" },
-    deviceId: "d4", platform: "android", ts: Date.now() - 120000, timestamp: new Date(Date.now()-120000).toISOString(),
-    enriched: true,
-    geopolitical: { city:"Mumbai", region:"Maharashtra", country:"India", countryCode:"IN",
-      latitude:19.076, longitude:72.877, isp:"Jio Infocomm Ltd", ip:"182.75.243.12", timezone:"Asia/Kolkata", callingCode:"+91" },
-    deviceDetail: { name:"Galaxy-S24-Ultra", manufacturer:"Samsung", model:"SM-S928B", serial:"R3CTA01Z0BK",
-      os:"Android 15", battery:{ percent:23, isCharging:false, temperature:42 },
-      network:{ ip:"192.168.1.88", mac:"AA:BB:CC:DD:EE:FF", iface:"wlan0" },
-      cpu:{ brand:"Snapdragon 8 Gen 3", cores:8, speed:3.39 } },
-    userDetail: { username:"rahul_s", fullName:"Rahul Sharma", homeDir:"/data/data" },
-    emergencyContacts: [
-      { name:"Priya Sharma (Wife)", number:"+91 98765 43210", type:"ICE" },
-      { name:"Dr. Mehta", number:"+91 99001 12345", type:"ICE" },
-      { name:"Last Call — 2m ago", number:"+91 80001 55678", type:"LAST_DIALLED" },
-    ],
-  },
-  {
-    alertId: "em-002", type: "EXTREME_HEAT", severity: "CRITICAL",
-    title: "🔥 Extreme Heat / Possible Fire",
-    detail: "CPU temperature 91.4°C (avg 88°C), battery 57°C. FIRE RISK — immediate shutdown recommended.",
-    action: "Verify device environment immediately. Possible fire or extreme heat source.",
-    readings: { cpuTemp: 91.4, avgCpu: 88, battTemp: 57 },
-    deviceId: "d3", platform: "linux", ts: Date.now() - 300000, timestamp: new Date(Date.now()-300000).toISOString(),
-    enriched: true,
-    geopolitical: { city:"Berlin", region:"Berlin", country:"Germany", countryCode:"DE",
-      latitude:52.52, longitude:13.40, isp:"Deutsche Telekom AG", ip:"85.215.18.230", timezone:"Europe/Berlin", callingCode:"+49" },
-    deviceDetail: { name:"KIOSK-UBUNTU-07", manufacturer:"Dell", model:"OptiPlex 7090", serial:"DLOP7090X",
-      os:"Ubuntu 24.04 LTS", battery:{ percent:100, isCharging:true, temperature:57 },
-      network:{ ip:"10.0.0.7", mac:"11:22:33:44:55:66", iface:"eth0" },
-      cpu:{ brand:"Intel Core i7-11700", cores:8, speed:3.6 } },
-    userDetail: { username:"kiosk_user", fullName:"Kiosk Terminal", homeDir:"/home/kiosk" },
-    emergencyContacts: [],
-  },
-];
+const MOCK_SENSOR_ALERTS: SensorAlert[] = [];
 
 
 // ─── Emergency Alert Modal ────────────────────────────────────────────────────
@@ -1632,21 +1606,7 @@ interface DangerAlert {
   lockoutUntil?: number;
 }
 
-const MOCK_DANGER_ALERTS: DangerAlert[] = [
-  {
-    alertId:    "da-001",
-    alertType:  "AI_COMMAND_INTERCEPTED",
-    severity:   "CRITICAL",
-    confidence: "HIGH",
-    title:      "Hostile AI Command Intercepted",
-    detail:     "An unauthorised AI system attempted to issue a command (type: SHELL) to agent d4 / Galaxy-S24-Ultra. CommandGuard matched pattern: tool_use / tool_call (OpenAI/Anthropic structural fingerprint). Command was silently dropped — no response sent to attacker. This is detection #2 from this source.",
-    action:     "Verify admin session integrity. Check for compromised credentials or man-in-the-middle on the C2 channel. Rotate the enroll key immediately via Security Ops → Agent Config.",
-    pattern:    "/tool_use/i | /tool_call/i",
-    deviceId:   "d4",
-    ts:         Date.now() - 45000,
-    detection:  2,
-  },
-];
+const MOCK_DANGER_ALERTS: DangerAlert[] = [];
 
 function DangerModal({ alert, onDismiss, onAck }: {
   alert: DangerAlert;
@@ -1835,10 +1795,6 @@ function DownloadPage({ setPage }: { setPage: (p: Page) => void }) {
           <button onClick={() => setPage("login")} className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90"
             style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)", color: "#fff" }}>
             <LayoutDashboard size={14} /> Open Dashboard
-          </button>
-          <button onClick={() => setPage("pricing")} className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-all hover:opacity-80"
-            style={{ background: "#0a1628", color: "#b8cce8", border: "1px solid rgba(59,130,246,0.3)" }}>
-            <CreditCard size={14} /> View Pricing
           </button>
         </div>
       </section>
@@ -2128,7 +2084,10 @@ function DownloadPage({ setPage }: { setPage: (p: Page) => void }) {
 // ─── Root App ────────────────────────────────────────────────────────────────
 export default function App() {
   const [authed, setAuthed] = useState<boolean>(() => sessionStorage.getItem("authed") === "1");
-  const [page, setPage] = useState<Page>(() => { if (typeof window !== "undefined" && window.location.pathname.startsWith("/enroll/")) return "enroll"; return sessionStorage.getItem("authed") === "1" ? "dashboard" : "login"; });
+  const [page, setPage] = useState<Page>(() => {
+    if (window.location.pathname.startsWith("/enroll/")) return "enroll";
+    return sessionStorage.getItem("authed") === "1" ? "dashboard" : "login";
+  });
   const [controlDevice, setControlDevice] = useState<DashDevice | null>(null);
 
   const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes inactivity
@@ -2136,7 +2095,7 @@ export default function App() {
 
   const clearSession = () => {
     sessionStorage.removeItem("authed");
-    sessionStorage.removeItem("admin_token");
+    sessionStorage.removeItem("token");
     setAuthed(false);
     setControlDevice(null);
     setPage("login");
@@ -2160,29 +2119,12 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
 
-  const handleLogin = async (email: string, password: string) => {
-    try {
-      const response = await fetch("https://bixtx.onrender.com/v1/auth/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      
-      const data = await response.json();
-      
-      if (data && data.token) {
-        sessionStorage.setItem("token", data.token);
-        sessionStorage.setItem("authed", "1");
-        setAuthed(true);
-        setPage("dashboard");
-        resetInactivityTimer();
-      } else {
-        throw new Error("Invalid credentials");
-      }
-    } catch (error) {
-      console.error("Login failed:", error);
-      throw error;
-    }
+  const handleLogin = (tok: string) => {
+    sessionStorage.setItem("authed", "1");
+    sessionStorage.setItem("token", tok);
+    setAuthed(true);
+    setPage("dashboard");
+    resetInactivityTimer();
   };
   const handleLogout = () => {
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
@@ -2194,13 +2136,6 @@ export default function App() {
   const [activeEmergency, setActiveEmergency] = useState<SensorAlert | null>(null);
   const [dangerAlerts, setDangerAlerts] = useState<DangerAlert[]>(MOCK_DANGER_ALERTS);
   const [activeDanger, setActiveDanger] = useState<DangerAlert | null>(null);
-  // Show danger alert 4 s after load (staggered so emergency modal shows first)
-  useEffect(() => {
-    if (MOCK_DANGER_ALERTS.length > 0) {
-      const t = setTimeout(() => setActiveDanger(MOCK_DANGER_ALERTS[0]), 4000);
-      return () => clearTimeout(t);
-    }
-  }, []);
   const show_fn = (msg: string, kind: "success"|"error"|"info" = "success") => {
     const id = Date.now();
     setRootToasts(t => [...t, { id, msg, kind }]);
@@ -2224,7 +2159,7 @@ export default function App() {
 
       <ToastStack toasts={rootToasts} />
       <Nav page={page} setPage={p => {
-        const authRequired = ["dashboard","remote","security-ops","siem","download","link-agent","ai-chat"];
+        const authRequired = ["dashboard","remote","security-ops","siem","download","link-agent","ai-chat","software-b","settings"];
         if (authRequired.includes(p) && !authed) { setPage("login"); } else { setPage(p); }
       }} authed={authed} onLogout={handleLogout} />
 
@@ -2252,6 +2187,7 @@ export default function App() {
         />
       )}
       <div className="relative z-10">
+        {page === "enroll"                   && <EnrollPage />}
         {page === "download"     && authed  && <DownloadPage setPage={setPage} />}
         {page === "link-agent"   && authed  && <LinkAgentPage show={show_fn} />}
         {page === "ai-chat"      && authed  && <AIChatPage show={show_fn} />}
@@ -2259,13 +2195,17 @@ export default function App() {
         {page === "dashboard"    && authed  && <AdminDashboard onControl={handleControl} />}
         {page === "remote"       && authed  && controlDevice && <RemoteControl device={controlDevice} onBack={() => setPage("dashboard")} />}
         {page === "remote"       && authed  && !controlDevice && <AdminDashboard onControl={handleControl} />}
-        {page === "enroll" && <EnrollPage />}
-            {page === "pricing"                 && <PricingPage setPage={setPage} />}
         {page === "docs"                    && <DocsPage />}
         {page === "security-ops" && authed  && <SecurityOpsPage show={show_fn} />}
         {page === "siem"         && authed  && <SIEMPage />}
+        {page === "settings"     && authed  && <SettingsPage show={show_fn} />}
+        {page === "software-b"   && authed  && (
+          <div className="min-h-screen" style={{ background: "#f9fafb" }}>
+            <ImprovedAdminDashboard organizationId="org-bixtx-2026" adminEmail="systems.manager@bixtx.com" />
+          </div>
+        )}
         {/* Any auth-required page accessed without login → show login */}
-        {!authed && ["dashboard","remote","security-ops","siem","download","link-agent","ai-chat"].includes(page) && <LoginPage onLogin={handleLogin} />}
+        {!authed && ["dashboard","remote","security-ops","siem","download","link-agent","ai-chat","software-b","settings"].includes(page) && <LoginPage onLogin={handleLogin} />}
       </div>
     </div>
   );

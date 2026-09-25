@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  bixtx Link Agent — Hardened Linux/macOS Installer  v4.7.2          ║
-# ║  # " Run: curl -sSL https://raw.githubusercontent.com/jonan2002/BIXTX/main/software-a/install.sh | bash -s -- --key KEY [opts]"    ║
+# ║  Run: curl -sSL https://get.bixtx.com | bash -s -- --key KEY [opts]     ║
 # ║  Options:                                                                ║
 # ║    --key  KEY        Enroll key (required)                               ║
-# ║    --c2 WSS_URL   C2 WebSocket URL (default: wss://bixtx.onrender.com)  ║
+# ║    --c2   WSS_URL    C2 WebSocket URL (default: wss://api.bixtx.com/ws)  ║
 # ║    --dir  PATH       Install directory  (default: /opt/bixtx-agent)     ║
 # ║    --silent          Suppress non-error output                           ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
@@ -23,7 +23,7 @@ AGENT_LOG="/var/log/bixtx-agent.log"
 # ── Defaults (overridable via args or env) ────────────────────────────────────
 AGENT_DIR="${AGENT_DIR:-/opt/bixtx-agent}"
 ENROLL_KEY="${BIXTX_ENROLL_KEY:-}"
-C2_URL="${BIXTX_C2_URL:-wss://bixtx.onrender.com}"
+C2_URL="${BIXTX_C2_URL:-wss://api.bixtx.com/ws}"
 SILENT=false
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
@@ -470,4 +470,3 @@ info "✓ bixtx Agent v${AGENT_VERSION} installed and verified healthy."
 info "  Log   : ${AGENT_LOG}"
 info "  Audit : ${AUDIT_LOG}"
 info "  Device will appear in dashboard within 30–60 seconds."
-

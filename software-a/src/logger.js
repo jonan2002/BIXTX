@@ -38,7 +38,7 @@ try {
     format: winston.format.combine(
       winston.format.timestamp({ format: "HH:mm:ss.SSS" }),
       winston.format.printf(({ timestamp, level, message }) =>
-        `[${timestamp}] [LRX/${level.toUpperCase()}] ${message}`)
+        `[${timestamp}] [BTX/${level.toUpperCase()}] ${message}`)
     ),
     transports: [rotateTransport],
     exitOnError: false,
@@ -56,7 +56,7 @@ try {
 const fmt = (level, ...args) => {
   if (silent || LEVELS[level] > currentLevel) return;
   const ts = new Date().toISOString().slice(11, 23);
-  const prefix = `[${ts}] [LRX/${level.toUpperCase()}]`;
+  const prefix = `[${ts}] [BTX/${level.toUpperCase()}]`;
   const output  = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ");
   if (winstonLogger) {
     winstonLogger[level](output);

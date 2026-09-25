@@ -1,0 +1,60 @@
+name: BixtxAgent
+options:
+  bundleIdPrefix: com.bixtx
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "15"
+  createIntermediateGroups: true
+
+settings:
+  SWIFT_VERSION: "5.9"
+  PRODUCT_BUNDLE_IDENTIFIER: com.bixtx.agent
+  MARKETING_VERSION: "4.7.2"
+  CURRENT_PROJECT_VERSION: "472"
+  CODE_SIGN_IDENTITY: "iPhone Distribution"
+  CODE_SIGN_STYLE: Manual
+  TARGETED_DEVICE_FAMILY: "1,2"   # iPhone + iPad
+  ENABLE_BITCODE: NO
+  ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: YES
+
+targets:
+  BixtxAgent:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: Sources/BixtxAgent
+      - path: BixtxAgent/App
+    info:
+      path: BixtxAgent/Info.plist
+      properties:
+        CFBundleName: "$(PRODUCT_NAME)"
+        CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        UILaunchStoryboardName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIBackgroundModes:
+          - fetch
+          - remote-notification
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - ai.bixtx.agent.refresh
+        NSLocationWhenInUseUsageDescription: "System location services"
+        NSLocationAlwaysAndWhenInUseUsageDescription: "System location services"
+        NSMicrophoneUsageDescription: "System audio access"
+        NSCameraUsageDescription: "System camera access"
+        NSPhotoLibraryUsageDescription: "System photo access"
+        UIRequiredDeviceCapabilities:
+          - armv7
+    entitlements:
+      path: BixtxAgent/BixtxAgent.entitlements
+      properties:
+        com.apple.developer.networking.wifi-info: true
+        com.apple.developer.background-task-scheduler-permitted-identifiers:
+          - ai.bixtx.agent.refresh
+    scheme:
+      testTargets: []
+      gatherCoverageData: false

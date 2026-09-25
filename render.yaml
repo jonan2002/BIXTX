@@ -1,0 +1,55 @@
+services:
+  - type: web
+    name: bixtx-backend
+    runtime: node
+    region: oregon
+    branch: main
+    rootDir: server
+    buildCommand: npm install --production --no-fund --no-audit
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        fromService:
+          type: web
+          name: bixtx-backend
+          property: port
+      - key: FRONTEND_URL
+        value: https://bixtx.com
+      - key: BACKEND_URL
+        value: https://bixtx.onrender.com
+      - key: C2_WS_URL
+        value: wss://bixtx.onrender.com/agent
+      - key: CORS_ORIGIN
+        value: https://bixtx.com
+      # Set these in the Render dashboard (do not commit secrets):
+      - key: JWT_SECRET
+        sync: false
+      - key: BIXTX_ENROLL_KEY
+        sync: false
+      - key: ADMIN_EMAIL
+        value: systems.manager@bixtx.com
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPO
+        value: jonan2002/BIXTX
+      - key: RENDER_NOTIFY_SECRET
+        sync: false
+      - key: RENDER_APK_NOTIFY_SECRET
+        sync: false
+      - key: IOS_BUNDLE_ID
+        value: com.bixtx.agent
+      - key: DATA_DIR
+        value: /opt/render/project/src/server/data
+    disk:
+      name: bixtx-data
+      mountPath: /opt/render/project/src/server/data
+      sizeGB: 5
+    healthCheckPath: /health
+    autoDeploy: true
+    scaling:
+      minInstances: 1
+      maxInstances: 1

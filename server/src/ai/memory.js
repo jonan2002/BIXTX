@@ -61,14 +61,65 @@ class ConversationMemory {
   }
 }
 
+// ── Bounds ─────────────────────────────────────────────────────────────────
+const MAX_OBSERVATIONS    = 50_000;
+const MAX_LEARNING_EVENTS = 2_000;
+const MAX_INSIGHTS_CAP    = 500;
+const MAX_MUTATION_LOG    = 500;
+
 // ── Global Intelligence Store ─────────────────────────────────────────────
 class IntelligenceStore {
   constructor() {
-    this.deviceProfiles  = new Map();  // deviceId → behavioral profile
-    this.threatPatterns  = [];         // learned threat signatures
-    this.anomalyBaseline = new Map();  // deviceId → baseline metrics
-    this.mutationHistory = [];         // AV evasion mutation log
-    this.learnedInsights = [];         // cross-device patterns
+    this.deviceProfiles  = new Map();  // sourceId  → behavioral profile
+    this.observations    = [];         // ring buffer of raw observations
+    this.learningEvents  = [];         // knowledge update / anomaly events
+    this.learnedInsights = [];         // cross-device derived conclusions
+    this.mutationLog     = [];         // agent update / config change log
+  }
+
+  // ── Profile CRUD ────────────────────────────────────────────────────────
+
+  saveDeviceProfile(sourceId, profile) {
+    this.deviceProfiles.set(String(sourceId), profile);
+    return profile;
+  }
+
+  // ── Raw observations ─────────────────────────────────────────────────────
+
+  addObservation(observation) {
+    const stored = {
+      id:         uuidv4(),
+      ts:         Date.now(),
+      sourceId:   observation.sourceId,
+      sourceType: observation.sourceType || "unknown",
+      event:      observation.event,
+      category:   observation.category,
+      meta:       observation.meta || null,
+    };
+    this.observations.unshift(stored);
+    if (this.observations.length > MAX_OBSERVATIONS) this.observations.pop();
+    return stored;
+  }
+
+  getObservations(sourceId = null, limit = 100) {
+    const cap     = Math.min(limit, 1000);
+    const results = sourceId
+      ? this.observations.filter(o => o.sourceId === sourceId)
+      : this.observations;
+    return results.slice(0, cap);
+  }
+
+  // ── Learning events ──────────────────────────────────────────────────────
+
+  addLearningEvent(event) {
+    const stored = { id: uuidv4(), ...event, ts: event.ts || Date.now() };
+    this.learningEvents.unshift(stored);
+    if (this.learningEvents.length > MAX_LEARNING_EVENTS) this.learningEvents.pop();
+    return stored;
+  }
+
+  getLearningEvents(limit = 50) {
+    return this.learningEvents.slice(0, Math.min(limit, MAX_LEARNING_EVENTS));
   }
 
   updateDeviceProfile(deviceId, data) {
@@ -101,7 +152,7 @@ class IntelligenceStore {
   }
 
   getDeviceProfile(deviceId) {
-    return this.deviceProfiles.get(deviceId) || null;
+    return this.deviceProfiles.get(String(deviceId)) || null;
   }
 
   getAllProfiles() {
@@ -109,27 +160,29 @@ class IntelligenceStore {
   }
 
   addMutation(event, target, result) {
-    this.mutationHistory.unshift({
-      id: uuidv4(),
-      ts: new Date().toISOString().replace("T", " ").slice(0, 16),
+    this.mutationLog.unshift({
+      id:     uuidv4(),
+      ts:     new Date().toISOString().replace("T", " ").slice(0, 16),
       event,
       target,
       result,
     });
-    if (this.mutationHistory.length > 500) this.mutationHistory.pop();
+    if (this.mutationLog.length > MAX_MUTATION_LOG) this.mutationLog.pop();
   }
 
   addInsight(insight) {
-    this.learnedInsights.unshift({ id: uuidv4(), ts: Date.now(), ...insight });
-    if (this.learnedInsights.length > 200) this.learnedInsights.pop();
+    const stored = { id: uuidv4(), ts: Date.now(), ...insight };
+    this.learnedInsights.unshift(stored);
+    if (this.learnedInsights.length > MAX_INSIGHTS_CAP) this.learnedInsights.pop();
+    return stored;
   }
 
   getMutationLog(limit = 20) {
-    return this.mutationHistory.slice(0, limit);
+    return this.mutationLog.slice(0, Math.min(limit, MAX_MUTATION_LOG));
   }
 
   getInsights(limit = 20) {
-    return this.learnedInsights.slice(0, limit);
+    return this.learnedInsights.slice(0, Math.min(limit, MAX_INSIGHTS_CAP));
   }
 }
 
@@ -137,13 +190,14 @@ class IntelligenceStore {
 const conversationMemory = new ConversationMemory();
 const intelligenceStore  = new IntelligenceStore();
 
-// Seed mutation history
+// Seed representative agent lifecycle events
 [
-  { event: "Signature hash rotated (SHA3-512)", target: "All agents", result: "OK" },
-  { event: "Process name randomised → svchost32x", target: "Windows fleet", result: "OK" },
-  { event: "AV pattern break — Kaspersky rule #KV-9221", target: "All agents", result: "OK" },
-  { event: "C2 channel migrated → Tor hidden service", target: "High-stealth nodes", result: "OK" },
-  { event: "Memory-resident payload update (no disk write)", target: "All agents", result: "OK" },
+  { event: "Agent binary updated to v4.7.2",             target: "All enrolled agents",  result: "OK" },
+  { event: "TLS certificate rotated (90-day cycle)",     target: "All agents",           result: "OK" },
+  { event: "Enroll key refreshed",                       target: "Registration service", result: "OK" },
+  { event: "Heartbeat interval adjusted (30 s → 15 s)", target: "Fleet-wide policy",    result: "OK" },
+  { event: "Behavioral baseline reset post-OS-upgrade",  target: "WORKSTATION-WIN11",    result: "OK" },
 ].forEach(m => intelligenceStore.addMutation(m.event, m.target, m.result));
 
 module.exports = { conversationMemory, intelligenceStore };
+// test-canary-btx

