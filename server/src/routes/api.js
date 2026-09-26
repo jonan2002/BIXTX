@@ -70,8 +70,14 @@ router.post("/auth/token", authLimiter, async (req, res) => {
     return res.json({ token, expires_in: 3600, role: "admin" });
   }
 
-  const user = store.users?.getByEmail(email);
-  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+  // Read directly from admin_users table
+  const bcrypt = require("bcryptjs");
+  const dbPath = process.env.DB_PATH || "./data/bixtx.db";
+  const db = require("better-sqlite3")(dbPath);
+  const user = db.prepare("SELECT * FROM admin_users WHERE email = ?").get(email);
+  db.close();
+
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: "Invalid credentials" });
   }
   const token = jwt.sign(
