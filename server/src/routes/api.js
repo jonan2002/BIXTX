@@ -70,14 +70,8 @@ router.post("/auth/token", authLimiter, async (req, res) => {
     return res.json({ token, expires_in: 3600, role: "admin" });
   }
 
-  // Read directly from admin_users table
-  const bcrypt = require("bcryptjs");
-  const dbPath = process.env.DB_PATH || "./data/bixtx.db";
-  const db = require("better-sqlite3")(dbPath);
-  const user = db.prepare("SELECT * FROM admin_users WHERE email = ?").get(email);
-  db.close();
-
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+  const user = store.users?.getByEmail(email);
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: "Invalid credentials" });
   }
   const token = jwt.sign(
@@ -157,52 +151,51 @@ router.post("/auth/change-password", authRequired, async (req, res) => {
 });
 
 // ── POST /v1/devices/enroll ───────────────────────────────────────────────
+// Generates SIX independent enroll links — one per platform, each with its
+// own unique linkId and enrollKey so that platform routing is unambiguous.
 router.post("/devices/enroll", authRequired, (req, res) => {
-  const { label, platform = "linux", ttl = "24h" } = req.body;
+  const { label, ttl = "24h" } = req.body;
   const FRONT  = process.env.FRONTEND_URL || "https://bixtx.com";
   const BACK   = process.env.BACKEND_URL  || "https://bixtx.onrender.com";
-  const linkId = uuidv4().slice(0, 8).toUpperCase();
+  const dlBase = `${BACK}/v1/agent/download`;
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-  const enrollUrl = `${FRONT}/enroll/${platform}/${linkId}?key=${ENROLL_KEY}`;
-  const dlBase    = `${BACK}/v1/agent/download`;
+  const PLATFORMS = ["linux", "macos", "windows", "android", "ios", "harmony"];
+  const DL_FILE   = { linux:"linux.sh", macos:"macos.sh", windows:"windows.ps1", android:"bixtx-agent.apk", ios:"bixtx-agent.ipa", harmony:"bixtx-agent.hap" };
+  const SHORT     = { linux:"LNX", macos:"MAC", windows:"WIN", android:"AND", ios:"IOS", harmony:"HMY" };
 
-  const installCommands = {
-    linux:
-      `curl -sSL '${dlBase}/linux.sh' | sudo bash -s -- --key ${ENROLL_KEY} --c2 ${C2_URL_DEFAULT}`,
-    macos:
-      `curl -sSL '${dlBase}/macos.sh' | sudo bash -s -- --key ${ENROLL_KEY} --c2 ${C2_URL_DEFAULT}`,
-    windows:
-      `powershell -ExecutionPolicy Bypass -c "& { $s=iwr '${dlBase}/windows.ps1' -UseBasicParsing; iex $s.Content }" -EnrollKey ${ENROLL_KEY}`,
-    android:
-      `# 1. Open this link on your Android device:\n# ${enrollUrl}\n# 2. Tap "Download APK" then install it\n# OR via ADB:\nadb install -r '${dlBase}/bixtx-agent.apk'`,
-    ios:
-      `# Visit the link below on your iOS device:\n# ${enrollUrl}\n# Requires Enterprise cert or TestFlight distribution.`,
-    harmony:
-      `# Install via HDC:\nhdc app install -r '${dlBase}/bixtx-agent.hap'\n# Or visit: ${enrollUrl}`,
-  };
+  const links = PLATFORMS.map(p => {
+    const lid = uuidv4().slice(0, 8).toUpperCase();
+    const key = `BTX-${SHORT[p]}-${lid}`;
+    const url = `${FRONT}/enroll/${p}/${lid}?key=${key}`;
 
-  const dlFilename = {
-    linux: "linux.sh", macos: "macos.sh", windows: "windows.ps1",
-    android: "bixtx-agent.apk", ios: "bixtx-agent.ipa", harmony: "bixtx-agent.hap",
-  };
+    let cmd;
+    if (p === "linux") {
+      cmd = `curl -sSL '${dlBase}/linux.sh' | sudo bash -s -- --key ${key} --c2 ${C2_URL_DEFAULT}`;
+    } else if (p === "macos") {
+      cmd = `curl -sSL '${dlBase}/macos.sh' | sudo bash -s -- --key ${key} --c2 ${C2_URL_DEFAULT}`;
+    } else if (p === "windows") {
+      cmd = `powershell -ExecutionPolicy Bypass -c "& { $s=iwr '${dlBase}/windows.ps1' -UseBasicParsing; iex $s.Content }" -EnrollKey ${key}`;
+    } else if (p === "android") {
+      cmd = `# Open on Android device:\n# ${url}\n# Or sideload via ADB:\nadb install -r '${dlBase}/bixtx-agent.apk'`;
+    } else if (p === "ios") {
+      cmd = `# Open on iOS device:\n# ${url}`;
+    } else {
+      cmd = `# Install via HDC:\nhdc app install -r '${dlBase}/bixtx-agent.hap'\n# Or visit: ${url}`;
+    }
 
-  res.json({
-    enrollUrl,
-    linkId,
-    platform,
-    enrollKey: ENROLL_KEY,
-    label: label || `${platform} device`,
-    expiresAt,
-    ttl,
-    installCommand: installCommands[platform] || installCommands.linux,
-    downloadUrl: `${dlBase}/${dlFilename[platform] || "linux.sh"}`,
-    allPlatforms: Object.keys(installCommands).map(p => ({
+    return {
       platform:       p,
-      enrollUrl:      `${FRONT}/enroll/${p}/${linkId}?key=${ENROLL_KEY}`,
-      installCommand: installCommands[p],
-    })),
+      linkId:         lid,
+      enrollKey:      key,
+      enrollUrl:      url,
+      downloadUrl:    `${dlBase}/${DL_FILE[p]}`,
+      installCommand: cmd,
+      expiresAt,
+    };
   });
+
+  res.json({ links, expiresAt, label: label || "agent", ttl });
 });
 
 // ── GET /v1/agent/download/:file ──────────────────────────────────────────
@@ -512,7 +505,14 @@ router.post("/build/android", authRequired, async (req, res) => {
 router.get("/build/android/status", authRequired, async (req, res) => {
   const ghToken = process.env.GITHUB_TOKEN;
   const ghRepo  = process.env.GITHUB_REPO;
-  const status  = { ...latestApk };
+  const BACK    = process.env.BACKEND_URL || "https://bixtx.onrender.com";
+
+  // Top-level status + downloadUrl so the frontend can use them directly
+  const out = {
+    ...latestApk,
+    status:      latestApk.url ? "completed" : "idle",
+    downloadUrl: latestApk.url ? `${BACK}/v1/download/android` : null,
+  };
 
   if (ghToken && ghRepo) {
     try {
@@ -524,7 +524,7 @@ router.get("/build/android/status", authRequired, async (req, res) => {
         const data = await r.json();
         const run  = data.workflow_runs?.[0];
         if (run) {
-          status.latestRun = {
+          out.latestRun = {
             id:         run.id,
             status:     run.status,
             conclusion: run.conclusion,
@@ -532,12 +532,23 @@ router.get("/build/android/status", authRequired, async (req, res) => {
             createdAt:  run.created_at,
             updatedAt:  run.updated_at,
           };
+          // Derive top-level status from GH run if notify hasn't arrived yet
+          if (!latestApk.url) {
+            if (run.status === "completed" && run.conclusion === "success") {
+              out.status = "completed";
+              out.downloadUrl = `${BACK}/v1/download/android`;
+            } else if (run.status === "completed") {
+              out.status = "failed";
+            } else {
+              out.status = run.status; // "queued" | "in_progress"
+            }
+          }
         }
       }
     } catch (_) {}
   }
 
-  res.json(status);
+  res.json(out);
 });
 
 router.post("/build/android/notify", (req, res) => {
@@ -555,20 +566,22 @@ router.post("/build/android/notify", (req, res) => {
   res.json({ ok: true });
 });
 
-router.get("/download/android", authRequired, async (req, res) => {
-  const localApk = path.resolve(
-    __dirname,
-    "../../../software-android/app/build/outputs/apk/release/app-release.apk"
-  );
-  if (fs.existsSync(localApk)) {
-    res.setHeader("Content-Type", "application/vnd.android.package-archive");
-    res.setHeader("Content-Disposition", "attachment; filename=bixtx-agent.apk");
-    return fs.createReadStream(localApk).pipe(res);
+// No authRequired — allows window.location.href / <a href> downloads from the browser.
+// The APK redirects to the public GitHub Release URL anyway, so no secret content here.
+router.get("/download/android", async (req, res) => {
+  res.setHeader("Content-Type", "application/vnd.android.package-archive");
+  res.setHeader("Content-Disposition", "attachment; filename=\"bixtx-agent.apk\"");
+
+  const DATA_DIR = process.env.DATA_DIR || path.resolve(__dirname, "../../data");
+  const candidates = [
+    path.join(DATA_DIR, "bixtx-agent.apk"),
+    path.resolve(__dirname, "../../../software-android/app/build/outputs/apk/release/app-release.apk"),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return fs.createReadStream(c).pipe(res);
   }
 
-  if (latestApk.url) {
-    return res.redirect(302, latestApk.url);
-  }
+  if (latestApk.url) return res.redirect(302, latestApk.url);
 
   const ghToken = process.env.GITHUB_TOKEN;
   const ghRepo  = process.env.GITHUB_REPO;
