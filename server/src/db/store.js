@@ -187,7 +187,7 @@ function createMemoryStore() {
     _data: [],
     _alerts: [],
     _users: new Map([
-      ["admin", { id: "admin", email: "admin@bixtx.com", passwordHash: "$2b$10$placeholder", role: "admin" }]
+      ["admin", { id: "admin", email: "systems.manager@bixtx.com", passwordHash: "$2b$10$9PqzAgddeLaXhMP/G2.VV.KHcwoKaTUpfRM6F6gckzLvjksCzDvZK", role: "admin" }]
     ]),
   };
 }
