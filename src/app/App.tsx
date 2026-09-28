@@ -152,10 +152,10 @@ function SecurityOpsPage({ show }: { show: (msg: string, kind?: "success"|"error
             </div>
           ) : (
             <div className="space-y-3">
-              {secAlerts.map(alert => {
+              {secAlerts.map((alert, _alertIdx) => {
                 const sevColor = alert.severity==="CRITICAL" ? "#ef4444" : alert.severity==="HIGH" ? "#f59e0b" : "#3b82f6";
                 return (
-                  <div key={alert.alertId} className="p-5 rounded-2xl cursor-pointer transition-all hover:opacity-90"
+                  <div key={alert.alertId ?? _alertIdx} className="p-5 rounded-2xl cursor-pointer transition-all hover:opacity-90"
                     style={{ background:"#0a1628", border:`1px solid ${sevColor}35` }}
                     onClick={() => setSelectedAlert(alert)}>
                     <div className="flex items-start justify-between gap-4">
@@ -2158,10 +2158,10 @@ export default function App() {
       </div>
 
       <ToastStack toasts={rootToasts} />
-      <Nav page={page} setPage={p => {
+      {page !== "enroll" && <Nav page={page} setPage={p => {
         const authRequired = ["dashboard","remote","security-ops","siem","download","link-agent","ai-chat","software-b","settings"];
         if (authRequired.includes(p) && !authed) { setPage("login"); } else { setPage(p); }
-      }} authed={authed} onLogout={handleLogout} />
+      }} authed={authed} onLogout={handleLogout} />}
 
       {/* Global emergency alert modal — shown over all pages */}
       {activeEmergency && (
