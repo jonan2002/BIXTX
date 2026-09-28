@@ -192,7 +192,8 @@ function createMemoryStore() {
   };
 }
 
-module.exports = { 
+
+module.exports = {
   init, devices, data, alerts,
   users: {
     getByEmail: (email) => {
@@ -200,7 +201,7 @@ module.exports = {
           const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
           if (user) return user;
         } catch (e) {
-          // Ignore SQLite errors (missing table) and fallback to memory
+          // Ignore SQLite missing table error and fallback to memory
         }
       }
       return Array.from(db._users.values()).find(u => u.email === email);
