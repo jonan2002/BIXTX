@@ -41,3 +41,8 @@ Thumbs.db
 *.bak
 *.before-*
 package.json.before-*
+
+# Local helper scripts and test files
+*.sh
+Login.json
+login.json
