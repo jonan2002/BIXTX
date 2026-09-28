@@ -20,7 +20,6 @@ const path = require("path");
 const store     = require("../db/store");
 const wsHandler = require("../websocket/handler");
 const logger    = require("../logger");
-const { binaryUrls } = require("./build-notify");
 
 const router = express.Router();
 
@@ -202,8 +201,7 @@ router.post("/devices/enroll", authRequired, (req, res) => {
 // ── GET /v1/agent/download/:file ──────────────────────────────────────────
 // linux.sh / macos.sh / windows.ps1 — served from static script templates
 // ios-manifest.plist                — served from static template
-// *.apk / *.ipa / *.hap            — served from persistent disk or CI release redirect
-// *.tar.gz / *.pkg / *.zip         — redirected to CI release URL via binaryUrls
+// *.apk / *.ipa / *.hap            — served from persistent disk
 router.get("/agent/download/:file", (req, res) => {
   const { file } = req.params;
   const BACK   = process.env.BACKEND_URL || "https://bixtx.onrender.com";
@@ -230,8 +228,8 @@ router.get("/agent/download/:file", (req, res) => {
     return res.send(content);
   }
 
-  if (file === "linux.sh")    return serveScript("install-linux.sh",   "text/x-sh",   "linux.sh");
-  if (file === "macos.sh")    return serveScript("install-macos.sh",   "text/x-sh",   "macos.sh");
+  if (file === "linux.sh")   return serveScript("install-linux.sh",   "text/x-sh",   "linux.sh");
+  if (file === "macos.sh")   return serveScript("install-macos.sh",   "text/x-sh",   "macos.sh");
   if (file === "windows.ps1") return serveScript("install-windows.ps1", "text/plain", "windows.ps1");
 
   if (file === "ios-manifest.plist") {
@@ -251,32 +249,14 @@ router.get("/agent/download/:file", (req, res) => {
     return res.send(content);
   }
 
-  // Map file extension → MIME type and binaryUrls platform key
-  const rawExt = path.extname(file).toLowerCase();
-  // Handle double extension .tar.gz
-  const ext = file.endsWith(".tar.gz") ? ".tar.gz" : rawExt;
-
+  // Binary files — served from persistent disk (uploaded by GitHub Actions CI)
+  const ext = path.extname(file).toLowerCase();
   const mimeMap = {
-    ".apk":    "application/vnd.android.package-archive",
-    ".ipa":    "application/octet-stream",
-    ".hap":    "application/octet-stream",
-    ".pkg":    "application/octet-stream",
-    ".zip":    "application/zip",
-    ".tar.gz": "application/gzip",
-    ".gz":     "application/gzip",
+    ".apk": "application/vnd.android.package-archive",
+    ".ipa": "application/octet-stream",
+    ".hap": "application/octet-stream",
   };
-  const platformByExt = {
-    ".apk":    "android",
-    ".ipa":    "ios",
-    ".hap":    "harmony",
-    ".pkg":    "macos",
-    ".zip":    "windows",
-    ".tar.gz": "linux",
-    ".gz":     "linux",
-  };
-
-  const mime     = mimeMap[ext];
-  const platform = platformByExt[ext];
+  const mime = mimeMap[ext];
   if (!mime) return res.status(404).json({ error: "Unknown file type" });
 
   const DATA_DIR = process.env.DATA_DIR || path.resolve(__dirname, "../../data");
@@ -294,24 +274,13 @@ router.get("/agent/download/:file", (req, res) => {
     }
   }
 
-  // Redirect to CI release URL stored in binaryUrls
-  if (platform && binaryUrls[platform]) {
-    return res.redirect(302, binaryUrls[platform]);
-  }
+  const buildMsg = ext === ".apk"
+    ? "Trigger a build via POST /v1/build/android, or push to the software-android/ branch to start CI."
+    : ext === ".ipa"
+    ? "Trigger a build via POST /v1/build/ios. Requires Apple signing secrets in GitHub."
+    : "Trigger a build via POST /v1/build/harmony. Requires Huawei signing secrets in GitHub.";
 
-  const triggerHints = {
-    android: "Trigger a build via POST /v1/build/android, or push to the software-android/ branch to start CI.",
-    ios:     "Trigger a build via POST /v1/build/ios. Requires Apple signing secrets in GitHub.",
-    harmony: "Trigger a build via POST /v1/build/harmony. Requires Huawei signing secrets in GitHub.",
-    linux:   "Trigger a build via POST /v1/build/linux, or push to the software-linux/ branch to start CI.",
-    macos:   "Trigger a build via POST /v1/build/macos, or push to the software-macos/ branch to start CI.",
-    windows: "Trigger a build via POST /v1/build/windows, or push to the software-windows/ branch to start CI.",
-  };
-
-  return res.status(404).json({
-    error: "Binary not built yet",
-    message: triggerHints[platform] || "Binary not available.",
-  });
+  return res.status(404).json({ error: "Binary not built yet", message: buildMsg });
 });
 
 // ── GET /v1/alerts ────────────────────────────────────────────────────────
@@ -480,23 +449,6 @@ router.post("/upgrades/:id/deny", authRequired, (req, res) => {
   res.json({ ok: true, entry, agentNotified: sent });
 });
 
-// ── GitHub Actions workflow dispatcher ───────────────────────────────────
-function triggerGHWorkflow(ghToken, ghRepo, workflow, inputs) {
-  return fetch(
-    `https://api.github.com/repos/${ghRepo}/actions/workflows/${workflow}/dispatches`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${ghToken}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ ref: "main", inputs }),
-    }
-  );
-}
-
 // ── Android APK build & download ──────────────────────────────────────────
 let latestApk = { url: null, localPath: null, build: null, version: null, ts: null };
 
@@ -555,11 +507,11 @@ router.get("/build/android/status", authRequired, async (req, res) => {
   const ghRepo  = process.env.GITHUB_REPO;
   const BACK    = process.env.BACKEND_URL || "https://bixtx.onrender.com";
 
-  const resolvedUrl = latestApk.url || binaryUrls.android;
+  // Top-level status + downloadUrl so the frontend can use them directly
   const out = {
     ...latestApk,
-    status:      resolvedUrl ? "completed" : "idle",
-    downloadUrl: resolvedUrl ? `${BACK}/v1/download/android` : null,
+    status:      latestApk.url ? "completed" : "idle",
+    downloadUrl: latestApk.url ? `${BACK}/v1/download/android` : null,
   };
 
   if (ghToken && ghRepo) {
@@ -580,14 +532,15 @@ router.get("/build/android/status", authRequired, async (req, res) => {
             createdAt:  run.created_at,
             updatedAt:  run.updated_at,
           };
-          if (!resolvedUrl) {
+          // Derive top-level status from GH run if notify hasn't arrived yet
+          if (!latestApk.url) {
             if (run.status === "completed" && run.conclusion === "success") {
               out.status = "completed";
               out.downloadUrl = `${BACK}/v1/download/android`;
             } else if (run.status === "completed") {
               out.status = "failed";
             } else {
-              out.status = run.status;
+              out.status = run.status; // "queued" | "in_progress"
             }
           }
         }
@@ -605,17 +558,16 @@ router.post("/build/android/notify", (req, res) => {
     return res.status(401).json({ error: "Invalid secret" });
   }
 
-  const { apkUrl, downloadUrl, build, version } = req.body || {};
-  const url = apkUrl || downloadUrl;
-  if (!url) return res.status(400).json({ error: "apkUrl or downloadUrl required" });
+  const { apkUrl, build, version } = req.body || {};
+  if (!apkUrl) return res.status(400).json({ error: "apkUrl required" });
 
-  latestApk = { url, localPath: null, build, version, ts: Date.now() };
-  binaryUrls.android = url;
-  logger.info(`[Build] APK notify received: ${url} (build=${build} v${version})`);
+  latestApk = { url: apkUrl, localPath: null, build, version, ts: Date.now() };
+  logger.info(`[Build] APK notify received: ${apkUrl} (build=${build} v${version})`);
   res.json({ ok: true });
 });
 
 // No authRequired — allows window.location.href / <a href> downloads from the browser.
+// The APK redirects to the public GitHub Release URL anyway, so no secret content here.
 router.get("/download/android", async (req, res) => {
   res.setHeader("Content-Type", "application/vnd.android.package-archive");
   res.setHeader("Content-Disposition", "attachment; filename=\"bixtx-agent.apk\"");
@@ -629,8 +581,7 @@ router.get("/download/android", async (req, res) => {
     if (fs.existsSync(c)) return fs.createReadStream(c).pipe(res);
   }
 
-  const resolvedUrl = latestApk.url || binaryUrls.android;
-  if (resolvedUrl) return res.redirect(302, resolvedUrl);
+  if (latestApk.url) return res.redirect(302, latestApk.url);
 
   const ghToken = process.env.GITHUB_TOKEN;
   const ghRepo  = process.env.GITHUB_REPO;
@@ -653,8 +604,25 @@ router.get("/download/android", async (req, res) => {
   });
 });
 
-// ── iOS build ─────────────────────────────────────────────────────────────
+// ── iOS / HarmonyOS build triggers ───────────────────────────────────────
 let latestIpa = { url: null, localPath: null, build: null, ts: null };
+let latestHap = { url: null, localPath: null, build: null, ts: null };
+
+function triggerGHWorkflow(ghToken, ghRepo, workflow, inputs) {
+  return fetch(
+    `https://api.github.com/repos/${ghRepo}/actions/workflows/${workflow}/dispatches`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${ghToken}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ref: "main", inputs }),
+    }
+  );
+}
 
 router.post("/build/ios", authRequired, async (req, res) => {
   const ghToken = process.env.GITHUB_TOKEN;
@@ -680,29 +648,17 @@ router.post("/build/ios", authRequired, async (req, res) => {
 });
 
 router.post("/build/ios/notify", (req, res) => {
-  const secret   = process.env.RENDER_APK_NOTIFY_SECRET || process.env.RENDER_NOTIFY_SECRET;
+  const secret   = process.env.RENDER_NOTIFY_SECRET;
   const provided = req.headers["x-notify-secret"] || req.body?.secret;
   if (secret && provided !== secret) return res.status(401).json({ error: "Invalid secret" });
-  const { ipaUrl, downloadUrl, build } = req.body || {};
-  const url = ipaUrl || downloadUrl;
-  if (!url) return res.status(400).json({ error: "ipaUrl or downloadUrl required" });
-  latestIpa = { url, localPath: null, build, ts: Date.now() };
-  binaryUrls.ios = url;
-  logger.info(`[Build] IPA notify: ${url}`);
+  const { ipaUrl, build } = req.body || {};
+  if (!ipaUrl) return res.status(400).json({ error: "ipaUrl required" });
+  latestIpa = { url: ipaUrl, localPath: null, build, ts: Date.now() };
+  logger.info(`[Build] IPA notify: ${ipaUrl}`);
   res.json({ ok: true });
 });
 
-router.get("/build/ios/status", authRequired, (req, res) => {
-  const resolvedUrl = latestIpa.url || binaryUrls.ios;
-  res.json({
-    ...latestIpa,
-    status: resolvedUrl ? "completed" : "not_built",
-    downloadUrl: resolvedUrl,
-  });
-});
-
-// ── HarmonyOS build ───────────────────────────────────────────────────────
-let latestHap = { url: null, localPath: null, build: null, ts: null };
+router.get("/build/ios/status", authRequired, (req, res) => res.json(latestIpa));
 
 router.post("/build/harmony", authRequired, async (req, res) => {
   const ghToken = process.env.GITHUB_TOKEN;
@@ -727,161 +683,17 @@ router.post("/build/harmony", authRequired, async (req, res) => {
 });
 
 router.post("/build/harmony/notify", (req, res) => {
-  const secret   = process.env.RENDER_APK_NOTIFY_SECRET || process.env.RENDER_NOTIFY_SECRET;
+  const secret   = process.env.RENDER_NOTIFY_SECRET;
   const provided = req.headers["x-notify-secret"] || req.body?.secret;
   if (secret && provided !== secret) return res.status(401).json({ error: "Invalid secret" });
-  const { hapUrl, downloadUrl, build } = req.body || {};
-  const url = hapUrl || downloadUrl;
-  if (!url) return res.status(400).json({ error: "hapUrl or downloadUrl required" });
-  latestHap = { url, localPath: null, build, ts: Date.now() };
-  binaryUrls.harmony = url;
-  logger.info(`[Build] HAP notify: ${url}`);
+  const { hapUrl, build } = req.body || {};
+  if (!hapUrl) return res.status(400).json({ error: "hapUrl required" });
+  latestHap = { url: hapUrl, localPath: null, build, ts: Date.now() };
+  logger.info(`[Build] HAP notify: ${hapUrl}`);
   res.json({ ok: true });
 });
 
-router.get("/build/harmony/status", authRequired, (req, res) => {
-  const resolvedUrl = latestHap.url || binaryUrls.harmony;
-  res.json({
-    ...latestHap,
-    status: resolvedUrl ? "completed" : "not_built",
-    downloadUrl: resolvedUrl,
-  });
-});
-
-// ── Linux build ───────────────────────────────────────────────────────────
-router.post("/build/linux", authRequired, async (req, res) => {
-  const ghToken = process.env.GITHUB_TOKEN;
-  const ghRepo  = process.env.GITHUB_REPO;
-  if (!ghToken || !ghRepo) {
-    return res.json({
-      ok: false,
-      localBuild: true,
-      message: "GitHub CI not configured. Build manually: tar -czf bixtx-agent-linux.tar.gz software-linux/",
-    });
-  }
-  try {
-    const r = await triggerGHWorkflow(ghToken, ghRepo, "build-linux.yml", {
-      c2WsUrl:        req.body.c2WsUrl || C2_URL_DEFAULT,
-      beaconInterval: String(req.body.beaconInterval || BEACON_DEFAULT),
-    });
-    if (!r.ok) return res.status(502).json({ error: "GitHub dispatch failed", status: r.status });
-    logger.info(`[Build] Linux tarball build triggered by ${req.admin.email}`);
-    res.json({ ok: true, message: "Linux build triggered — tarball ready in ~2 min", repo: ghRepo });
-  } catch (err) {
-    res.status(500).json({ error: "Internal error", detail: err.message });
-  }
-});
-
-router.post("/build/linux/notify", (req, res) => {
-  const secret   = process.env.RENDER_APK_NOTIFY_SECRET;
-  const provided = req.headers["x-notify-secret"] || req.body?.secret;
-  if (secret && provided !== secret) return res.status(401).json({ error: "Invalid secret" });
-  const { downloadUrl, build } = req.body || {};
-  if (!downloadUrl) return res.status(400).json({ error: "downloadUrl required" });
-  binaryUrls.linux = downloadUrl;
-  logger.info(`[Build] Linux notify: ${downloadUrl} (build=${build})`);
-  res.json({ ok: true, platform: "linux", downloadUrl });
-});
-
-router.get("/build/linux/status", authRequired, (req, res) => {
-  const url = binaryUrls.linux;
-  res.json({
-    platform: "linux",
-    status: url ? "completed" : "not_built",
-    downloadUrl: url,
-    message: url ? null : "Binary not built yet. Trigger via POST /v1/build/linux",
-  });
-});
-
-// ── macOS build ───────────────────────────────────────────────────────────
-router.post("/build/macos", authRequired, async (req, res) => {
-  const ghToken = process.env.GITHUB_TOKEN;
-  const ghRepo  = process.env.GITHUB_REPO;
-  if (!ghToken || !ghRepo) {
-    return res.json({
-      ok: false,
-      localBuild: true,
-      message: "GitHub CI not configured. Build manually: pkgbuild --root software-macos --identifier com.bixtx.agent --version 4.7.2 --install-location /opt/bixtx-agent bixtx-agent-macos.pkg",
-    });
-  }
-  try {
-    const r = await triggerGHWorkflow(ghToken, ghRepo, "build-macos.yml", {
-      c2WsUrl:        req.body.c2WsUrl || C2_URL_DEFAULT,
-      beaconInterval: String(req.body.beaconInterval || BEACON_DEFAULT),
-    });
-    if (!r.ok) return res.status(502).json({ error: "GitHub dispatch failed", status: r.status });
-    logger.info(`[Build] macOS pkg build triggered by ${req.admin.email}`);
-    res.json({ ok: true, message: "macOS build triggered — pkg ready in ~3 min", repo: ghRepo });
-  } catch (err) {
-    res.status(500).json({ error: "Internal error", detail: err.message });
-  }
-});
-
-router.post("/build/macos/notify", (req, res) => {
-  const secret   = process.env.RENDER_APK_NOTIFY_SECRET;
-  const provided = req.headers["x-notify-secret"] || req.body?.secret;
-  if (secret && provided !== secret) return res.status(401).json({ error: "Invalid secret" });
-  const { downloadUrl, build } = req.body || {};
-  if (!downloadUrl) return res.status(400).json({ error: "downloadUrl required" });
-  binaryUrls.macos = downloadUrl;
-  logger.info(`[Build] macOS notify: ${downloadUrl} (build=${build})`);
-  res.json({ ok: true, platform: "macos", downloadUrl });
-});
-
-router.get("/build/macos/status", authRequired, (req, res) => {
-  const url = binaryUrls.macos;
-  res.json({
-    platform: "macos",
-    status: url ? "completed" : "not_built",
-    downloadUrl: url,
-    message: url ? null : "Binary not built yet. Trigger via POST /v1/build/macos",
-  });
-});
-
-// ── Windows build ─────────────────────────────────────────────────────────
-router.post("/build/windows", authRequired, async (req, res) => {
-  const ghToken = process.env.GITHUB_TOKEN;
-  const ghRepo  = process.env.GITHUB_REPO;
-  if (!ghToken || !ghRepo) {
-    return res.json({
-      ok: false,
-      localBuild: true,
-      message: "GitHub CI not configured. Build manually: Compress-Archive -Path software-windows\\* -DestinationPath bixtx-agent-windows.zip",
-    });
-  }
-  try {
-    const r = await triggerGHWorkflow(ghToken, ghRepo, "build-windows.yml", {
-      c2WsUrl:        req.body.c2WsUrl || C2_URL_DEFAULT,
-      beaconInterval: String(req.body.beaconInterval || BEACON_DEFAULT),
-    });
-    if (!r.ok) return res.status(502).json({ error: "GitHub dispatch failed", status: r.status });
-    logger.info(`[Build] Windows zip build triggered by ${req.admin.email}`);
-    res.json({ ok: true, message: "Windows build triggered — zip ready in ~2 min", repo: ghRepo });
-  } catch (err) {
-    res.status(500).json({ error: "Internal error", detail: err.message });
-  }
-});
-
-router.post("/build/windows/notify", (req, res) => {
-  const secret   = process.env.RENDER_APK_NOTIFY_SECRET;
-  const provided = req.headers["x-notify-secret"] || req.body?.secret;
-  if (secret && provided !== secret) return res.status(401).json({ error: "Invalid secret" });
-  const { downloadUrl, build } = req.body || {};
-  if (!downloadUrl) return res.status(400).json({ error: "downloadUrl required" });
-  binaryUrls.windows = downloadUrl;
-  logger.info(`[Build] Windows notify: ${downloadUrl} (build=${build})`);
-  res.json({ ok: true, platform: "windows", downloadUrl });
-});
-
-router.get("/build/windows/status", authRequired, (req, res) => {
-  const url = binaryUrls.windows;
-  res.json({
-    platform: "windows",
-    status: url ? "completed" : "not_built",
-    downloadUrl: url,
-    message: url ? null : "Binary not built yet. Trigger via POST /v1/build/windows",
-  });
-});
+router.get("/build/harmony/status", authRequired, (req, res) => res.json(latestHap));
 
 // ── GET /v1/stats ─────────────────────────────────────────────────────────
 router.get("/stats", authRequired, (req, res) => {
