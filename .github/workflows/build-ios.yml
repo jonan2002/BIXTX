@@ -1,0 +1,14 @@
+name: Build iOS Agent
+on:
+  workflow_dispatch:
+  push:
+    paths: ['software-ios/**', '.github/workflows/build-ios.yml']
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Placeholder — requires Apple signing secrets
+        run: |
+          echo "iOS build requires IOS_P12_BASE64, IOS_P12_PASSWORD, IOS_MOBILEPROVISION_BASE64"
+          echo "Once you have these, uncomment the xcodebuild steps."

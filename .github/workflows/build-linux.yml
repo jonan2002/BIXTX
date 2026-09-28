@@ -1,0 +1,20 @@
+name: Build Linux Agent
+on:
+  workflow_dispatch:
+  push:
+    paths: ['software-linux/**', '.github/workflows/build-linux.yml']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: tar -czf bixtx-agent-linux.tar.gz -C software-linux . --exclude=node_modules --exclude=.git
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: linux-build-${{ github.run_number }}
+          files: bixtx-agent-linux.tar.gz
+      - name: Notify Backend
+        run: |
+          curl -X POST "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/linux/notify" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"completed","downloadUrl":"https://github.com/${{ github.repository }}/releases/download/linux-build-${{ github.run_number }}/bixtx-agent-linux.tar.gz","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'

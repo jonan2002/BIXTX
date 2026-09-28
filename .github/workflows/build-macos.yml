@@ -1,0 +1,20 @@
+name: Build macOS Agent
+on:
+  workflow_dispatch:
+  push:
+    paths: ['software-macos/**', '.github/workflows/build-macos.yml']
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: tar -czf bixtx-agent-macos.tar.gz -C software-macos . --exclude=node_modules --exclude=.git
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: macos-build-${{ github.run_number }}
+          files: bixtx-agent-macos.tar.gz
+      - name: Notify Backend
+        run: |
+          curl -X POST "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/macos/notify" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"completed","downloadUrl":"https://github.com/${{ github.repository }}/releases/download/macos-build-${{ github.run_number }}/bixtx-agent-macos.tar.gz","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'

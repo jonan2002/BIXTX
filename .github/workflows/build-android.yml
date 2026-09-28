@@ -1,0 +1,40 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    paths: ['software-android/**', '.github/workflows/build-android.yml']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Decode keystore
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > software-android/app/keystore.jks
+            cat > software-android/keystore.properties << EOF
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=keystore.jks
+          EOF
+          fi
+      - name: Build release APK
+        run: |
+          cd software-android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-build-${{ github.run_number }}
+          files: software-android/app/build/outputs/apk/release/app-release.apk
+      - name: Notify Backend
+        run: |
+          curl -X POST "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/android/notify" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"completed","downloadUrl":"https://github.com/${{ github.repository }}/releases/download/android-build-${{ github.run_number }}/app-release.apk","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'
