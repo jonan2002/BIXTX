@@ -193,10 +193,12 @@ function createMemoryStore() {
 }
 
 
+
 module.exports = {
   init, devices, data, alerts,
   users: {
     getByEmail: (email) => {
+      if (!db._isMemory) {
         try {
           const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
           if (user) return user;
