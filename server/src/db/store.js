@@ -192,4 +192,14 @@ function createMemoryStore() {
   };
 }
 
-module.exports = { init, devices, data, alerts };
+module.exports = { 
+  init, devices, data, alerts,
+  users: {
+    getByEmail: (email) => {
+      if (db._isMemory) {
+        return Array.from(db._users.values()).find(u => u.email === email);
+      }
+      return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    }
+  }
+};
