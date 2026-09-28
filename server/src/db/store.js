@@ -196,10 +196,14 @@ module.exports = {
   init, devices, data, alerts,
   users: {
     getByEmail: (email) => {
-      if (db._isMemory) {
-        return Array.from(db._users.values()).find(u => u.email === email);
+        try {
+          const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+          if (user) return user;
+        } catch (e) {
+          // Ignore SQLite errors (missing table) and fallback to memory
+        }
       }
-      return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+      return Array.from(db._users.values()).find(u => u.email === email);
     }
   }
 };
