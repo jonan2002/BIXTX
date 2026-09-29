@@ -27,22 +27,16 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cache: true
-
       - name: Accept Android SDK licenses
         run: |
           yes | sdkmanager --licenses >/dev/null || true
 
-      - name: Install Android SDK packages
-        run: |
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "ndk;26.1.10909125"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-34 build-tools;34.0.0"
+          ndk: "26.1.10909125"
+          cache: true
 
       - name: Build release APK
         working-directory: android
