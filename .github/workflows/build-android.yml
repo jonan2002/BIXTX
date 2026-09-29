@@ -25,8 +25,8 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           api-level: 34
-          target: android-34
-          build-tools: 34.0.0
+          ndk: 26.1.10909125
+          cache: true
       - name: Build release APK
         run: |
           cd android
