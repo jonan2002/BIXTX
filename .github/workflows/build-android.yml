@@ -71,13 +71,3 @@ jobs:
             "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/android/notify" \
             -H "Content-Type: application/json" \
             -d '{"status":"completed","downloadUrl":"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'
-
-
-   
-
-
-
-
-
-
-

@@ -897,5 +897,16 @@ router.get("/stats", authRequired, (req, res) => {
   });
 });
 
+router.post("/build/android/notify", (req, res) => {
+  const { status, downloadUrl, secret } = req.body;
+  if (secret !== process.env.RENDER_APK_NOTIFY_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (status === "completed" && downloadUrl) {
+    if (typeof binaryUrls !== 'undefined') {
+      binaryUrls.android = downloadUrl;
+    }
+  }
+  res.json({ success: true, message: "Build status updated" });
+});
 module.exports = router;
-module.exports.enqueueUpgradeProposal = enqueueUpgradeProposal;
