@@ -1,14 +1,19 @@
 name: Build HarmonyOS HAP
+
 on:
   workflow_dispatch:
   push:
-    paths: ['software-harmony/**', '.github/workflows/build-harmony.yml']
+    paths:
+      - 'software-harmony/**'
+      - '.github/workflows/build-harmony.yml'
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Placeholder — requires DevEco command-line tools
         run: |
           echo "HarmonyOS build requires DevEco Studio CLI + Huawei signing secrets"
-          echo "See: https://developer.huawei.com/consumer/en/doc/harmonyos-guides/"
+          echo "Add HUAWEI_SIGNING_KEY and HUAWEI_SIGNING_PASSWORD in GitHub Actions secrets before enabling the real build."

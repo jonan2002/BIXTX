@@ -1,9 +1,13 @@
 name: CI/CD Pipeline
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-android.yml'
 
 jobs:
   backend:
@@ -11,9 +15,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Deploy to Render
+
+      - name: Notify backend build started
+        if: always()
         run: |
-          curl -X POST ${{ secrets.RENDER_APK_NOTIFY_URL }}
+          curl -X POST "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/android/started" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"started","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'
 
   android-build:
     runs-on: ubuntu-latest
@@ -21,26 +29,25 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
+
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cache: true
-
-      - name: Accept Android SDK licenses
         shell: bash
         run: |
-          yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses >/dev/null || true
+          set -euxo pipefail
+          mkdir -p "$ANDROID_SDK_ROOT"
 
-      - name: Install Android SDK packages
-        shell: bash
-        run: |
-          sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" \
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null || true
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --install "cmdline-tools;latest"
+
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null || true
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
             "platform-tools" \
             "platforms;android-34" \
             "build-tools;34.0.0" \
@@ -49,8 +56,16 @@ jobs:
       - name: Build release APK
         working-directory: android
         run: ./gradlew assembleRelease
+
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Notify backend build completed
+        if: always()
+        run: |
+          curl -X POST "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/android/notify" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"completed","downloadUrl":"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'

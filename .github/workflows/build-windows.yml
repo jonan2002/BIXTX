@@ -1,20 +1,27 @@
 name: Build Windows Agent
+
 on:
   workflow_dispatch:
   push:
-    paths: ['software-windows/**', '.github/workflows/build-windows.yml']
+    paths:
+      - 'software-windows/**'
+      - '.github/workflows/build-windows.yml'
+
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Zip package
         shell: pwsh
         run: Compress-Archive -Path software-windows/* -DestinationPath bixtx-agent-windows.zip
+
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: windows-build-${{ github.run_number }}
           files: bixtx-agent-windows.zip
+
       - name: Notify Backend
         shell: bash
         run: |
