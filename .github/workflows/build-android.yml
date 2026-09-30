@@ -76,11 +76,14 @@ jobs:
             "ndk;26.1.10909125"
 
       - name: Decode Android keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: secrets.ANDROID_KEYSTORE_BASE64
         shell: bash
         run: |
           set -euo pipefail
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > software-android/keystore.jks
+
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode \
+            > software-android/keystore.jks
+
           cat > software-android/keystore.properties <<EOF
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
