@@ -76,7 +76,7 @@ jobs:
             "ndk;26.1.10909125"
 
       - name: Decode Android keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: secrets.ANDROID_KEYSTORE_BASE64
         shell: bash
         run: |
           set -euo pipefail
