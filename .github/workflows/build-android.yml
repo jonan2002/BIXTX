@@ -37,16 +37,27 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Setup Android SDK
+      - name: Setup Android SDK (Manual - No Action)
         shell: bash
         run: |
           set -euxo pipefail
+          
+          # Set SDK root
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
           mkdir -p "$ANDROID_SDK_ROOT"
-
-          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null || true
-          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --install "cmdline-tools;latest"
-
-          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null || true
+          
+          # Download and install cmdline-tools
+          echo "Downloading cmdline-tools..."
+          cd /tmp
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q commandlinetools-linux-*.zip
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          mv cmdline-tools "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+          
+          # Accept licenses and install packages
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null 2>&1 || true
+          
           sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
             "platform-tools" \
             "platforms;android-34" \
