@@ -73,8 +73,6 @@ jobs:
             -d '{"status":"completed","downloadUrl":"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'
 
 
-
-
    
 
 
