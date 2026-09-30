@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - 'android/**'
+      - 'software-android/**'
       - '.github/workflows/build-android.yml'
 
 jobs:
@@ -41,7 +41,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
           TOOLS_DIR="$SDK_ROOT/cmdline-tools/latest"
 
@@ -76,19 +75,39 @@ jobs:
             "build-tools;34.0.0" \
             "ndk;26.1.10909125"
 
+      - name: Decode Android keystore
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode \
+            > software-android/keystore.jks
+
+          cat > software-android/keystore.properties <<EOF
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=keystore.jks
+          EOF
+
       - name: Build release APK
-        working-directory: android
-        run: ./gradlew assembleRelease
+        working-directory: software-android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: software-android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
 
       - name: Notify backend build completed
         if: always()
         run: |
-          curl -X POST "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/android/notify" \
+          curl --fail-with-body -X POST \
+            "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/android/notify" \
             -H "Content-Type: application/json" \
             -d '{"status":"completed","downloadUrl":"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'
