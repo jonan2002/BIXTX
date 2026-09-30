@@ -38,7 +38,6 @@ jobs:
           cache: gradle
 
       - name: Setup Android SDK
-        shell: bash
         run: |
           set -euo pipefail
           SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
@@ -46,13 +45,7 @@ jobs:
 
           mkdir -p "$SDK_ROOT/cmdline-tools"
           cd /tmp
-
-          curl -fsSL \
-            -o android-commandlinetools.zip \
-            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-
-          rm -rf /tmp/android-cmdline-tools
-          mkdir -p /tmp/android-cmdline-tools
+          curl -fsSL -o android-commandlinetools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q android-commandlinetools.zip -d /tmp/android-cmdline-tools
 
           rm -rf "$TOOLS_DIR"
@@ -63,12 +56,10 @@ jobs:
           echo "$TOOLS_DIR/bin" >> "$GITHUB_PATH"
           echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
 
-          export ANDROID_SDK_ROOT="$SDK_ROOT"
-          export ANDROID_HOME="$SDK_ROOT"
-          export PATH="$TOOLS_DIR/bin:$SDK_ROOT/platform-tools:$PATH"
+          export ANDROID_SDK_ROOT=$SDK_ROOT
+          export ANDROID_HOME=$SDK_ROOT
 
-          yes | sdkmanager --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
-
+          yes | sdkmanager --sdk_root="$SDK_ROOT" --licenses || true
           sdkmanager --sdk_root="$SDK_ROOT" \
             "platform-tools" \
             "platforms;android-34" \
@@ -77,9 +68,7 @@ jobs:
 
       - name: Decode Android keystore
         if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
-        shell: bash
         run: |
-          set -euo pipefail
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > software-android/keystore.jks
           cat > software-android/keystore.properties <<EOF
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
