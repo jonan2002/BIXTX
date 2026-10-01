@@ -6,8 +6,6 @@
     android:viewportHeight="192">
     <path android:fillColor="#3DDC84"
           android:pathData="M0,0h192v192h-192z" />
-    <circle android:fillColor="#FFFFFF"
-            android:cx="96"
-            android:cy="96"
-            android:r="60" />
+    <path android:fillColor="#FFFFFF"
+          android:pathData="M96,36a60,60 0 1,0 0,120a60,60 0 1,0 0,-120" />
 </vector>
