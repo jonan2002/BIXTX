@@ -76,6 +76,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.appcompat:appcompat:1.6.1")
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
     implementation(libs.gson)
