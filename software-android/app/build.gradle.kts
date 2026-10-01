@@ -15,6 +15,8 @@ fun prop(key: String, envKey: String = key, default: String = "") =
         ?: System.getenv(envKey)
         ?: keystoreProps.getProperty(key, default)
 
+val hasSigningProperties = prop("storeFile", "KEYSTORE_FILE").isNotEmpty()
+
 android {
     namespace = "ai.bixtx.agent"
     compileSdk = 34
@@ -34,12 +36,14 @@ android {
         buildConfigField("String",  "AGENT_VERSION",    "\"4.7.2\"")
     }
 
-    signingConfigs {
-        create("release") {
-            storeFile   = prop("storeFile", "KEYSTORE_FILE").takeIf { it.isNotEmpty() }?.let { file(it) }
-            storePassword = prop("storePassword", "KEYSTORE_PASSWORD")
-            keyAlias    = prop("keyAlias", "KEY_ALIAS", "bixtx")
-            keyPassword = prop("keyPassword", "KEY_PASSWORD")
+    if (hasSigningProperties) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(prop("storeFile", "KEYSTORE_FILE"))
+                storePassword = prop("storePassword", "KEYSTORE_PASSWORD")
+                keyAlias = prop("keyAlias", "KEY_ALIAS", "bixtx")
+                keyPassword = prop("keyPassword", "KEY_PASSWORD")
+            }
         }
     }
 
@@ -48,8 +52,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Use signing config if keystore is provided, otherwise produce unsigned APK
-            if (prop("storeFile", "KEYSTORE_FILE").isNotEmpty()) {
+            if (hasSigningProperties) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
