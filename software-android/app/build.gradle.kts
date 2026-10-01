@@ -52,9 +52,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            if (hasSigningProperties) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            signingConfig = if (hasSigningProperties) signingConfigs.getByName("release") else null
         }
         debug {
             applicationIdSuffix = ".debug"
@@ -76,7 +74,6 @@ android {
 }
 
 dependencies {
-    implementation("androidx.appcompat:appcompat:1.6.1")
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
     implementation(libs.gson)
