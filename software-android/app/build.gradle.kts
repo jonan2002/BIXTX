@@ -77,4 +77,5 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.gson)
     implementation(libs.core.ktx)
+    implementation("androidx.appcompat:appcompat:1.6.1")
 }
