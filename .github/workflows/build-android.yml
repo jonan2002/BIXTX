@@ -66,6 +66,7 @@ jobs:
 
       - name: Notify backend build completed
         if: always()
+        continue-on-error: true
         run: |
           curl --fail-with-body -X POST \
             "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/android/notify" \
