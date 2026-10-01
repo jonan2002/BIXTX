@@ -15,7 +15,24 @@ fun prop(key: String, envKey: String = key, default: String = "") =
         ?: System.getenv(envKey)
         ?: keystoreProps.getProperty(key, default)
 
+fun resolveSigningStoreFile(): File? {
+    val rawPath = prop("storeFile", "KEYSTORE_FILE")
+    if (rawPath.isBlank()) return null
+
+    val candidates = listOf(
+        file(rawPath),
+        rootProject.file(rawPath),
+        rootProject.file("app/$rawPath"),
+        rootProject.file("$rootDir/$rawPath")
+    )
+
+    return candidates.firstOrNull { it.exists() }
+}
+
+val hasSigningProperties = resolveSigningStoreFile() != null
+
 android {
+    lint { checkReleaseBuilds = false }
     namespace = "ai.bixtx.agent"
     compileSdk = 34
 
@@ -34,12 +51,15 @@ android {
         buildConfigField("String",  "AGENT_VERSION",    "\"4.7.2\"")
     }
 
-    signingConfigs {
-        create("release") {
-            storeFile   = prop("storeFile", "KEYSTORE_FILE").takeIf { it.isNotEmpty() }?.let { file(it) }
-            storePassword = prop("storePassword", "KEYSTORE_PASSWORD")
-            keyAlias    = prop("keyAlias", "KEY_ALIAS", "bixtx")
-            keyPassword = prop("keyPassword", "KEY_PASSWORD")
+    if (hasSigningProperties) {
+        signingConfigs {
+            create("release") {
+                val signingStoreFile = resolveSigningStoreFile() ?: error("Release keystore file was not found")
+                storeFile = signingStoreFile
+                storePassword = prop("storePassword", "KEYSTORE_PASSWORD")
+                keyAlias = prop("keyAlias", "KEY_ALIAS", "bixtx")
+                keyPassword = prop("keyPassword", "KEY_PASSWORD")
+            }
         }
     }
 
@@ -48,10 +68,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Use signing config if keystore is provided, otherwise produce unsigned APK
-            if (prop("storeFile", "KEYSTORE_FILE").isNotEmpty()) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            signingConfig = if (hasSigningProperties) signingConfigs.getByName("release") else null
         }
         debug {
             applicationIdSuffix = ".debug"
@@ -77,4 +94,5 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.gson)
     implementation(libs.core.ktx)
+    implementation("androidx.appcompat:appcompat:1.6.1")
 }

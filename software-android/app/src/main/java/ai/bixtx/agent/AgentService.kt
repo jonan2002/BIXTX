@@ -32,10 +32,10 @@ class AgentService : Service() {
         }
         socket.onConnect = {
             socket.send("ENROLL", mapOf(
-                "enrollKey"   to Config.ENROLL_KEY,
-                "deviceId"    to deviceId,
-                "platform"    to Config.PLATFORM,
-                "agentVersion"to Config.AGENT_VERSION,
+                "enrollKey"    to Config.ENROLL_KEY,
+                "deviceId"     to deviceId,
+                "platform"     to Config.PLATFORM,
+                "agentVersion" to Config.AGENT_VERSION,
             ) + collectors.snapshot())
         }
 

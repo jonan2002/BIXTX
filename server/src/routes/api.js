@@ -517,7 +517,7 @@ router.post("/build/android", authRequired, async (req, res) => {
 
   try {
     const r = await fetch(
-      `https://api.github.com/repos/${ghRepo}/actions/workflows/build-apk.yml/dispatches`,
+      `https://api.github.com/repos/${ghRepo}/actions/workflows/build-android.yml/dispatches`,
       {
         method: "POST",
         headers: {
@@ -565,7 +565,7 @@ router.get("/build/android/status", authRequired, async (req, res) => {
   if (ghToken && ghRepo) {
     try {
       const r = await fetch(
-        `https://api.github.com/repos/${ghRepo}/actions/workflows/build-apk.yml/runs?per_page=1`,
+        `https://api.github.com/repos/${ghRepo}/actions/workflows/build-android.yml/runs?per_page=1`,
         { headers: { Authorization: `Bearer ${ghToken}`, Accept: "application/vnd.github+json" } }
       );
       if (r.ok) {
@@ -897,5 +897,16 @@ router.get("/stats", authRequired, (req, res) => {
   });
 });
 
+router.post("/build/android/notify", (req, res) => {
+  const { status, downloadUrl, secret } = req.body;
+  if (secret !== process.env.RENDER_APK_NOTIFY_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (status === "completed" && downloadUrl) {
+    if (typeof binaryUrls !== 'undefined') {
+      binaryUrls.android = downloadUrl;
+    }
+  }
+  res.json({ success: true, message: "Build status updated" });
+});
 module.exports = router;
-module.exports.enqueueUpgradeProposal = enqueueUpgradeProposal;
