@@ -15,7 +15,21 @@ fun prop(key: String, envKey: String = key, default: String = "") =
         ?: System.getenv(envKey)
         ?: keystoreProps.getProperty(key, default)
 
-val hasSigningProperties = prop("storeFile", "KEYSTORE_FILE").isNotEmpty()
+fun resolveSigningStoreFile(): File? {
+    val rawPath = prop("storeFile", "KEYSTORE_FILE")
+    if (rawPath.isBlank()) return null
+
+    val candidates = listOf(
+        file(rawPath),
+        rootProject.file(rawPath),
+        rootProject.file("app/$rawPath"),
+        rootProject.file("$rootDir/$rawPath")
+    )
+
+    return candidates.firstOrNull { it.exists() }
+}
+
+val hasSigningProperties = resolveSigningStoreFile() != null
 
 android {
     namespace = "ai.bixtx.agent"
@@ -39,7 +53,8 @@ android {
     if (hasSigningProperties) {
         signingConfigs {
             create("release") {
-                storeFile = file(prop("storeFile", "KEYSTORE_FILE"))
+                val signingStoreFile = resolveSigningStoreFile() ?: error("Release keystore file was not found")
+                storeFile = signingStoreFile
                 storePassword = prop("storePassword", "KEYSTORE_PASSWORD")
                 keyAlias = prop("keyAlias", "KEY_ALIAS", "bixtx")
                 keyPassword = prop("keyPassword", "KEY_PASSWORD")
