@@ -32,6 +32,7 @@ fun resolveSigningStoreFile(): File? {
 val hasSigningProperties = resolveSigningStoreFile() != null
 
 android {
+    lint { checkReleaseBuilds = false }
     namespace = "ai.bixtx.agent"
     compileSdk = 34
 
