@@ -66,12 +66,11 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: release-apk
-          path: software-android/app/build/outputs/apk/release/app-release.apk
-          if-no-files-found: error
+          tag_name: android-build-${{ github.run_number }}
+          files: software-android/app/build/outputs/apk/release/app-release.apk
 
       - name: Notify backend build completed
         if: always()
@@ -79,4 +78,4 @@ jobs:
           curl --fail-with-body -X POST \
             "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/android/notify" \
             -H "Content-Type: application/json" \
-            -d '{"status":"completed","downloadUrl":"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'
+            -d '{"status":"completed","downloadUrl":"https://github.com/${{ github.repository }}/releases/download/android-build-${{ github.run_number }}/app-release.apk","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'
