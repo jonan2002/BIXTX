@@ -18,6 +18,9 @@ on:
       - 'software-android/**'
       - '.github/workflows/build-android.yml'
 
+permissions:
+  contents: write
+
 jobs:
   backend:
     runs-on: ubuntu-latest
