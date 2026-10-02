@@ -49,7 +49,8 @@ function authRequired(req, res, next) {
 // ── Rate limiting ─────────────────────────────────────────────────────────
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 50,
+  keyGenerator: (req) => req.body?.email || req.ip,
   message: { error: "Too many requests" },
 });
 
