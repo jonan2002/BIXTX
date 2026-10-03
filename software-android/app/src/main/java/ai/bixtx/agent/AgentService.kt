@@ -35,7 +35,7 @@ class AgentService : Service() {
                 "enrollKey"   to Config.ENROLL_KEY,
                 "deviceId"    to deviceId,
                 "platform"    to Config.PLATFORM,
-                "agentVersion"to Config.AGENT_VERSION,
+                "agentVersion" to Config.AGENT_VERSION,
             ) + collectors.snapshot())
         }
 
