@@ -73,14 +73,29 @@ jobs:
         run: |
           if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
             mkdir -p software-android/app
-            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > software-android/app/keystore.jks
+            printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > software-android/app/keystore.jks
             {
               echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
               echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}"
               echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}"
-              echo "storeFile=keystore.jks"
+              echo "storeFile=app/keystore.jks"
             } > software-android/keystore.properties
+            echo "Keystore file created at software-android/app/keystore.jks"
+          else
+            echo "WARNING: ANDROID_KEYSTORE_BASE64 secret is not set. Building unsigned APK."
           fi
+
+      - name: Verify keystore
+        if: hashFiles('software-android/app/keystore.jks') != ''
+        run: |
+          echo "Keystore file exists:"
+          ls -lh software-android/app/keystore.jks
+          echo "File type:"
+          file software-android/app/keystore.jks
+          echo "Attempting to list keystore contents..."
+          keytool -list -v -keystore software-android/app/keystore.jks \
+            -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            -alias "${{ secrets.ANDROID_KEY_ALIAS }}" 2>&1 || echo "Keystore verification failed - will attempt to build"
 
       - name: Build release APK
         working-directory: software-android
