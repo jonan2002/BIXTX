@@ -1,5 +1,8 @@
 // Auto-seed admin user on startup (Render's filesystem is ephemeral)
 const path = require("path");
+require("./store"); // ensure users table exists before seeding
+require("./store"); // ensure users table exists before seeding
+require("./store"); // ensure users table exists before seeding
 const bcrypt = require("bcryptjs");
 const Database = require("better-sqlite3");
 
