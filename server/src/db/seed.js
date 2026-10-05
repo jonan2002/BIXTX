@@ -1,8 +1,6 @@
 // Auto-seed admin user on startup (Render's filesystem is ephemeral)
 const path = require("path");
 require("./store"); // ensure users table exists before seeding
-require("./store"); // ensure users table exists before seeding
-require("./store"); // ensure users table exists before seeding
 const bcrypt = require("bcryptjs");
 const Database = require("better-sqlite3");
 
@@ -19,10 +17,14 @@ if (!cols.includes("email")) throw new Error("users table has no 'email' column:
 const row = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
 
 if (row) {
-  // keep everything, just refresh the password hash
   if (cols.includes("password")) {
     db.prepare("UPDATE users SET password = ? WHERE email = ?").run(hash, email);
     console.log("[seed] admin password refreshed for", email);
+  } else if (cols.includes("password_hash")) {
+    db.prepare("UPDATE users SET password_hash = ? WHERE email = ?").run(hash, email);
+    console.log("[seed] admin password_hash refreshed for", email);
+  } else {
+    throw new Error("users table has no password column: " + cols.join(","));
   }
 } else {
   const record = {};
