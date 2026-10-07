@@ -123,17 +123,27 @@ export const ImprovedAdminDashboard: React.FC<AdminDashboardProps> = ({
   const [userToast, setUserToast] = useState('');
   const showUserToast = (msg: string) => { setUserToast(msg); setTimeout(() => setUserToast(''), 2500); };
 
-  const handleAddUser = () => {
-    if (!newName.trim() || !newEmail.trim()) { showUserToast('Name and email are required'); return; }
-    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRe.test(newEmail)) { showUserToast('Enter a valid email address'); return; }
-    const u: ManagedUser = {
-      id: `usr-${Date.now()}`, name: newName.trim(), email: newEmail.trim(),
-      role: newRole, status: 'active', lastLogin: 'Never', devices: 0,
-    };
-    setManagedUsers(p => [...p, u]);
-    showUserToast(`User "${u.name}" added`);
-    setNewName(''); setNewEmail(''); setNewRole('viewer'); setShowAddUser(false);
+  const handleAddUser = async () => {
+    if (!newUserEmail || !newUserPassword) { alert('Email and password required'); return; }
+    try {
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const r = await fetch('https://bixtx.onrender.com/v1/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({
+          name: newUserName || newUserEmail.split('@')[0],
+          email: newUserEmail,
+          password: newUserPassword,
+          role: newUserRole
+        })
+      });
+      const data = await r.json();
+      if (!r.ok) { alert(data.error || 'Failed'); return; }
+      alert('User created: ' + newUserEmail);
+      setNewUserName(''); setNewUserEmail(''); setNewUserPassword('');
+      setShowAddUser(false);
+      window.location.reload();
+    } catch (e) { alert('Error: ' + e.message); }
   };
 
   const handleToggleUserStatus = (id: string) => {
