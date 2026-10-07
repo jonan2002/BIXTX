@@ -958,5 +958,46 @@ router.get("/stats", authRequired, (req, res) => {
   });
 });
 
-module.exports = router;
 module.exports.enqueueUpgradeProposal = enqueueUpgradeProposal;
+
+// ── User management routes ────────────────────────────────────────────────
+const bcryptjs = require("bcryptjs");
+const Database = require("better-sqlite3");
+const dbPath = require("path");
+const DB_FILE = process.env.DB_PATH || dbPath.resolve(__dirname, "../../data/bixtx.db");
+function openDb() { return new Database(DB_FILE); }
+
+router.get("/users", authRequired, (req, res) => {
+  try {
+    const db = openDb();
+    const users = db.prepare("SELECT id, email, name, role, status, last_login FROM users ORDER BY email").all();
+    db.close();
+    res.json({ users, total: users.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/users", authRequired, async (req, res) => {
+  try {
+    const { name, email, password, role = "operator" } = req.body;
+    if (!email || !password) return res.status(400).json({ error: "email and password required" });
+    const hash = await bcryptjs.hash(password, 12);
+    const id = require("crypto").randomUUID();
+    const db = openDb();
+    db.prepare("INSERT INTO users (id, email, name, password_hash, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(id, email, name || email.split("@")[0], hash, role, "active", new Date().toISOString());
+    db.close();
+    logger.info(`[Users] Created user ${email} (${role})`);
+    res.json({ ok: true, id, email, name, role, status: "active" });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/users/:id", authRequired, (req, res) => {
+  try {
+    const db = openDb();
+    db.prepare("DELETE FROM users WHERE id = ?").run(req.params.id);
+    db.close();
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+module.exports = router;
