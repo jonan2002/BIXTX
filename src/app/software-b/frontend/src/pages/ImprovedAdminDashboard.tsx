@@ -120,27 +120,28 @@ export const ImprovedAdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<ManagedUser['role']>('viewer');
+  const [newPassword, setNewPassword] = useState('');
   const [userToast, setUserToast] = useState('');
   const showUserToast = (msg: string) => { setUserToast(msg); setTimeout(() => setUserToast(''), 2500); };
 
   const handleAddUser = async () => {
-    if (!newUserEmail || !newUserPassword) { alert('Email and password required'); return; }
+    if (!newEmail || !newPassword) { alert('Email and password required'); return; }
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
       const r = await fetch('https://bixtx.onrender.com/v1/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({
-          name: newUserName || newUserEmail.split('@')[0],
-          email: newUserEmail,
-          password: newUserPassword,
-          role: newUserRole
+          name: newName || newEmail.split('@')[0],
+          email: newEmail,
+          password: newPassword,
+          role: newRole
         })
       });
       const data = await r.json();
       if (!r.ok) { alert(data.error || 'Failed'); return; }
-      alert('User created: ' + newUserEmail);
-      setNewUserName(''); setNewUserEmail(''); setNewUserPassword('');
+      alert('User created: ' + newEmail);
+      setNewName(''); setNewEmail(''); setNewPassword('');
       setShowAddUser(false);
       window.location.reload();
     } catch (e) { alert('Error: ' + e.message); }
