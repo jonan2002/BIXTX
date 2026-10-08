@@ -18,24 +18,9 @@ on:
       - 'software-android/**'
       - '.github/workflows/build-android.yml'
 
-permissions:
-  contents: write
-
 jobs:
-  backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Notify backend build started
-        if: always()
-        run: |
-          curl -X POST "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/android/started" \
-            -H "Content-Type: application/json" \
-            -d '{"status":"started","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'
-
   android-build:
     runs-on: ubuntu-latest
-    needs: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -55,12 +40,12 @@ jobs:
         run: |
           if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
             echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > software-android/keystore.jks
-            cat > software-android/keystore.properties <<EOF
+            cat > software-android/keystore.properties <<INNEREOF
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           storeFile=keystore.jks
-          EOF
+          INNEREOF
           fi
 
       - name: Build release APK
@@ -69,16 +54,10 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: android-build-${{ github.run_number }}
-          files: software-android/app/build/outputs/apk/release/app-release.apk
-
-      - name: Notify backend build completed
-        if: always()
+      - name: Upload APK to backend
+        if: success()
         run: |
           curl --fail-with-body -X POST \
-            "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/android/notify" \
-            -H "Content-Type: application/json" \
-            -d '{"status":"completed","downloadUrl":"https://github.com/${{ github.repository }}/releases/download/android-build-${{ github.run_number }}/app-release.apk","secret":"${{ secrets.RENDER_APK_NOTIFY_SECRET }}"}'
+            "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/android/upload?secret=${{ secrets.RENDER_APK_NOTIFY_SECRET }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @software-android/app/build/outputs/apk/release/app-release.apk
