@@ -1000,4 +1000,30 @@ router.delete("/users/:id", authRequired, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Upload APK binary directly from GitHub Actions ──────────────────────
+router.post("/build/android/upload", (req, res) => {
+  const secret = req.query.secret;
+  if (secret !== process.env.RENDER_APK_NOTIFY_SECRET) {
+    return res.status(401).json({ error: "Invalid secret" });
+  }
+  const DATA_DIR = process.env.DATA_DIR || require("path").resolve(__dirname, "../../data");
+  if (!require("fs").existsSync(DATA_DIR)) require("fs").mkdirSync(DATA_DIR, { recursive: true });
+  const apkPath = require("path").join(DATA_DIR, "bixtx-agent.apk");
+  const chunks = [];
+  req.on("data", (c) => chunks.push(c));
+  req.on("end", () => {
+    try {
+      require("fs").writeFileSync(apkPath, Buffer.concat(chunks));
+      const size = require("fs").statSync(apkPath).size;
+      latestApk = { url: "/v1/download/android", localPath: apkPath, ts: Date.now() };
+      binaryUrls.android = "/v1/download/android";
+      logger.info(`[Build] APK uploaded: ${size} bytes`);
+      res.json({ ok: true, size, path: apkPath });
+    } catch (e) {
+      logger.error(`[Build] APK upload failed: ${e.message}`);
+      res.status(500).json({ error: e.message });
+    }
+  });
+});
+
 module.exports = router;
