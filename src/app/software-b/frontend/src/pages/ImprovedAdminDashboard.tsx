@@ -124,6 +124,30 @@ export const ImprovedAdminDashboard: React.FC<AdminDashboardProps> = ({
   const [userToast, setUserToast] = useState('');
   const showUserToast = (msg: string) => { setUserToast(msg); setTimeout(() => setUserToast(''), 2500); };
 
+  const fetchUsers = async () => {
+    try {
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const r = await fetch('https://bixtx.onrender.com/v1/users', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (Array.isArray(data.users)) {
+        setManagedUsers(data.users.map((u: any) => ({
+          id: u.id,
+          name: u.name || u.email,
+          email: u.email,
+          role: u.role,
+          status: u.status || 'active',
+          lastLogin: u.last_login || 'Never',
+          devices: 0
+        })));
+      }
+    } catch (e) { console.error('fetchUsers failed', e); }
+  };
+
+  React.useEffect(() => { fetchUsers(); }, []);
+
   const handleAddUser = async () => {
     if (!newEmail || !newPassword) { alert('Email and password required'); return; }
     try {
