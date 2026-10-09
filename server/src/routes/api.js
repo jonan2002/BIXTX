@@ -204,6 +204,14 @@ router.post("/devices/enroll", authRequired, (req, res) => {
 // Public — called by EnrollPage to check binary availability before attempting download.
 // Returns { platform, available, downloadUrl, building, retryAfter, message }
 router.get("/agent/status/:platform", (req, res) => {
+  // HARMONY_PENDING_SECRETS — flip to real build once binaryUrls.harmony is set
+  if (req.params.platform === "harmony" && !binaryUrls.harmony) {
+    return res.json({
+      platform: "harmony", available: false, building: false,
+      downloadUrl: null, retryAfter: null,
+      message: "HarmonyOS build requires Huawei signing secrets. Contact admin."
+    });
+  }
   const { platform } = req.params;
   const KNOWN = ["android", "ios", "harmony", "linux", "macos", "windows"];
   if (!KNOWN.includes(platform)) {
