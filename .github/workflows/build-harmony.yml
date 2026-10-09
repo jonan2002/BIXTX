@@ -13,7 +13,87 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Placeholder — requires DevEco command-line tools
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache DevEco CLI + hvigor
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/command-line-tools
+            ~/.ohpm
+            ~/.hvigor
+          key: harmony-sdk-${{ runner.os }}-v1
+
+      - name: Install DevEco command line tools
         run: |
-          echo "HarmonyOS build requires DevEco Studio CLI + Huawei signing secrets"
-          echo "Add HUAWEI_SIGNING_KEY and HUAWEI_SIGNING_PASSWORD in GitHub Actions secrets before enabling the real build."
+          if [ ! -d "$HOME/command-line-tools" ]; then
+            cd $HOME
+            curl -fsSL -o tools.zip "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2/DeveloperAlliance_package_901_9/b7/v3/ubK7cR78Q8GXq3dvGQvZ0Q/commandline-tools-linux-x64-5.0.3.900.zip" || \
+            curl -fsSL -o tools.zip "https://repo.huaweicloud.com/harmonyos/commandline-tools-linux-x64-5.0.3.900.zip"
+            unzip -q tools.zip
+            rm tools.zip
+          fi
+          echo "$HOME/command-line-tools/bin" >> $GITHUB_PATH
+          export DEVECO_SDK_HOME="$HOME/command-line-tools/sdk"
+          echo "DEVECO_SDK_HOME=$DEVECO_SDK_HOME" >> $GITHUB_ENV
+
+      - name: Decode signing files
+        run: |
+          echo "${{ secrets.HUAWEI_SIGNING_KEY }}" | base64 -d > /tmp/bixtx.p12
+          echo "${{ secrets.HUAWEI_SIGNING_CERT }}" | base64 -d > /tmp/bixtx.cer
+          echo "${{ secrets.HUAWEI_SIGNING_PROFILE }}" | base64 -d > /tmp/bixtx.p7b
+          ls -la /tmp/bixtx.*
+
+      - name: Write build-profile.json5
+        run: |
+          cd software-harmony
+          cat > build-profile.json5 << 'JSONEOF'
+          {
+            "app": {
+              "signingConfigs": [{
+                "name": "release",
+                "type": "HarmonyOS",
+                "material": {
+                  "certpath": "/tmp/bixtx.cer",
+                  "storePassword": "PLACEHOLDER",
+                  "keyAlias": "bixtx",
+                  "keyPassword": "PLACEHOLDER",
+                  "profile": "/tmp/bixtx.p7b",
+                  "signAlg": "SHA256withECDSA",
+                  "storeFile": "/tmp/bixtx.p12"
+                }
+              }],
+              "products": [{ "name": "default", "signingConfig": "release" }]
+            },
+            "modules": [{
+              "name": "entry",
+              "srcPath": "./entry",
+              "targets": [{ "name": "default", "applyToProducts": ["default"] }]
+            }]
+          }
+          JSONEOF
+          sed -i "s|PLACEHOLDER|${{ secrets.HUAWEI_SIGNING_PASSWORD }}|g" build-profile.json5
+
+      - name: Install dependencies
+        run: |
+          cd software-harmony
+          ohpm install --all
+
+      - name: Build HAP
+        run: |
+          cd software-harmony
+          hvigorw assembleHap --mode module -p product=default -p buildMode=release --no-daemon
+
+      - name: Upload HAP to backend
+        if: success()
+        run: |
+          HAP_PATH=$(find software-harmony -name "*.hap" -path "*release*" | head -1)
+          echo "HAP: $HAP_PATH"
+          curl --fail-with-body -X POST \
+            "${{ secrets.RENDER_APK_NOTIFY_URL }}/build/harmony/upload?secret=${{ secrets.RENDER_APK_NOTIFY_SECRET }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$HAP_PATH"

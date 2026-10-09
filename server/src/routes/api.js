@@ -204,17 +204,6 @@ router.post("/devices/enroll", authRequired, (req, res) => {
 // Public — called by EnrollPage to check binary availability before attempting download.
 // Returns { platform, available, downloadUrl, building, retryAfter, message }
 router.get("/agent/status/:platform", (req, res) => {
-  // HARMONY_NOT_SUPPORTED — no CI pipeline exists for .hap builds
-  if (req.params.platform === "harmony") {
-    return res.json({
-      platform: "harmony",
-      available: false,
-      building: false,
-      downloadUrl: null,
-      retryAfter: null,
-      message: "HarmonyOS build requires manual setup with Huawei DevEco Studio. Not available via CI."
-    });
-  }
   const { platform } = req.params;
   const KNOWN = ["android", "ios", "harmony", "linux", "macos", "windows"];
   if (!KNOWN.includes(platform)) {
@@ -1035,6 +1024,42 @@ router.post("/build/android/upload", (req, res) => {
       res.status(500).json({ error: e.message });
     }
   });
+});
+
+// ── Upload HAP binary from GitHub Actions ──────────────────────────────
+router.post("/build/harmony/upload", (req, res) => {
+  const secret = req.query.secret;
+  if (secret !== process.env.RENDER_APK_NOTIFY_SECRET) {
+    return res.status(401).json({ error: "Invalid secret" });
+  }
+  const DATA_DIR = process.env.DATA_DIR || require("path").resolve(__dirname, "../../data");
+  if (!require("fs").existsSync(DATA_DIR)) require("fs").mkdirSync(DATA_DIR, { recursive: true });
+  const hapPath = require("path").join(DATA_DIR, "bixtx-agent.hap");
+  const chunks = [];
+  req.on("data", (c) => chunks.push(c));
+  req.on("end", () => {
+    try {
+      require("fs").writeFileSync(hapPath, Buffer.concat(chunks));
+      const size = require("fs").statSync(hapPath).size;
+      latestHap = { url: "/v1/download/harmony", localPath: hapPath, ts: Date.now() };
+      binaryUrls.harmony = "/v1/download/harmony";
+      logger.info(`[Build] HAP uploaded: ${size} bytes`);
+      res.json({ ok: true, size, path: hapPath });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+});
+
+router.get("/download/harmony", (req, res) => {
+  const DATA_DIR = process.env.DATA_DIR || require("path").resolve(__dirname, "../../data");
+  const hapPath = require("path").join(DATA_DIR, "bixtx-agent.hap");
+  if (require("fs").existsSync(hapPath)) {
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Disposition", "attachment; filename=\"bixtx-agent.hap\"");
+    return require("fs").createReadStream(hapPath).pipe(res);
+  }
+  return res.status(404).json({ error: "HAP not built yet" });
 });
 
 module.exports = router;
