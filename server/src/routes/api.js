@@ -204,6 +204,17 @@ router.post("/devices/enroll", authRequired, (req, res) => {
 // Public — called by EnrollPage to check binary availability before attempting download.
 // Returns { platform, available, downloadUrl, building, retryAfter, message }
 router.get("/agent/status/:platform", (req, res) => {
+  // HARMONY_NOT_SUPPORTED — no CI pipeline exists for .hap builds
+  if (req.params.platform === "harmony") {
+    return res.json({
+      platform: "harmony",
+      available: false,
+      building: false,
+      downloadUrl: null,
+      retryAfter: null,
+      message: "HarmonyOS build requires manual setup with Huawei DevEco Studio. Not available via CI."
+    });
+  }
   const { platform } = req.params;
   const KNOWN = ["android", "ios", "harmony", "linux", "macos", "windows"];
   if (!KNOWN.includes(platform)) {
